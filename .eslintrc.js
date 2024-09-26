@@ -1,4 +1,9 @@
 module.exports = {
   root: true,
-  extends: '@react-native',
+  extends: ['eslint:recommended', 'google'],
+  rules: {
+    'no-restricted-globals': ['error', 'name', 'length'],
+    'prefer-arrow-callback': 'error',
+    quotes: ['error', 'double'],
+  },
 };
