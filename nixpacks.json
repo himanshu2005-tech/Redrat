@@ -1,19 +1,13 @@
 {
   "phases": {
-    "setup": {
-      "nodejs": "20.14.0"
-    },
     "install": {
-      "cmd": "npm install"
+      "cmds": ["npm install"]
     },
     "build": {
-      "cmd": "npm run build"
+      "cmds": ["npm run build"]
     },
     "start": {
       "cmd": "npm start"
     }
-  },
-  "plan": {
-    "exclude_languages": ["ruby"]
   }
 }
