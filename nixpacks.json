@@ -1,13 +1,7 @@
 {
-  "phases": {
-    "install": {
-      "cmds": ["npm install"]
-    },
-    "build": {
-      "cmds": []
-    },
-    "start": {
-      "cmd": "node server.js"
-    }
+  "version": "1.0",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "entrypoint": "npm start"
   }
 }

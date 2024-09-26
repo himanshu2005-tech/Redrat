@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; // Use the PORT from environment variable
 
 const SERVICE_ACCOUNT_FILE = path.join(__dirname, 'src', 'backend', 'redrat-910fc-firebase-adminsdk-ublgn-8982027780.json');
 const serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_FILE, 'utf8'));
