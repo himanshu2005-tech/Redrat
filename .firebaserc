@@ -1,9 +1,0 @@
-{
-  "projects": {
-    "default": "redrat-910fc",
-    "staging": "redrat-910fc"
-  },
-  "targets": {},
-  "etags": {},
-  "dataconnectEmulatorConfig": {}
-}
