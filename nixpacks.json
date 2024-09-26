@@ -3,9 +3,15 @@
     "setup": {
       "nodejs": "20.14.0"
     },
-    "install": "npm install",
-    "build": "npm run build",
-    "start": "npm start"
+    "install": {
+      "cmd": "npm install"
+    },
+    "build": {
+      "cmd": "npm run build"
+    },
+    "start": {
+      "cmd": "npm start"
+    }
   },
   "plan": {
     "exclude_languages": ["ruby"]
