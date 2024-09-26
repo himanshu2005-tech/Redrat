@@ -1,19 +1,13 @@
 {
   "phases": {
-      "setup": {
-          "nodejs": "20.14.0"
-      },
-      "install": {
-          "cmd": "npm install --legacy-peer-deps"
-      },
-      "build": {
-          "cmd": "npm run build"
-      },
-      "start": {
-          "cmd": "npm start"
-      }
-  },
-  "plan": {
-      "exclude_languages": ["ruby"]
+    "install": {
+      "cmds": ["npm install"]
+    },
+    "build": {
+      "cmds": []
+    },
+    "start": {
+      "cmd": "node server.js"
+    }
   }
 }
