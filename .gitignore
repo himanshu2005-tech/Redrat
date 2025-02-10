@@ -77,3 +77,5 @@ yarn-error.log
 server.js
 sendNotification.js
 sendNotificationViaId.js
+
+*.json
