@@ -6,31 +6,54 @@ import {
   Text,
   Pressable,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import moment from 'moment';
+import topics from './Topics';
+import TrendingNetworks from './TrendingNetworks';
+import auth from '@react-native-firebase/auth';
+import uuid from 'react-native-uuid';
+import RecommendedPosts from './RecommendedPosts';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 const Trending = ({navigation}) => {
   const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userDetails, setUserDetails] = useState([]);
 
   useEffect(() => {
     const fetchHashtags = async () => {
       const today = moment().format('YYYY-MM-DD');
+      const yesterday = moment().subtract(1, 'days').format('YYYY-MM-DD');
+      const currentHour = moment().hour();
 
       try {
-        const hashTagsSnapshot = await firestore()
-          .collection('HashTags')
-          .where('countForToday', '>', 0)
-          .where('lastUpdated', '==', today)
-          .orderBy('countForToday', 'desc')
-          .limit(20)
-          .get();
+        let hashTagsSnapshot;
+
+        if (currentHour >= 1) {
+          hashTagsSnapshot = await firestore()
+            .collection('HashTags')
+            .where('countForToday', '>', 0)
+            .where('lastUpdated', '==', today)
+            .orderBy('countForToday', 'desc')
+            .limit(20)
+            .get();
+        } else {
+          hashTagsSnapshot = await firestore()
+            .collection('HashTags')
+            .where('countForToday', '>', 0)
+            .where('lastUpdated', '==', yesterday)
+            .orderBy('countForToday', 'desc')
+            .limit(20)
+            .get();
+        }
 
         const usageCounts = hashTagsSnapshot.docs.map(doc => ({
           id: doc.id,
           totalUsed: doc.data().totalUsed || 0,
-          count: doc.data().countForToday || 0
+          count: doc.data().countForToday || 0,
         }));
 
         setTags(usageCounts);
@@ -44,15 +67,49 @@ const Trending = ({navigation}) => {
     fetchHashtags();
   }, []);
 
+  useEffect(() => {
+    const fetchPreferences = async () => {
+      try {
+        const userId = auth().currentUser?.uid;
+        if (!userId) {
+          console.warn('User not authenticated.');
+          return;
+        }
+
+        const preferencesSnapshot = await firestore()
+          .collection('Users')
+          .doc(userId)
+          .collection('Preferences')
+          .orderBy('score', 'desc')
+          .limit(5)
+          .get();
+
+        const preferences = preferencesSnapshot.docs.map(doc => ({
+          topic: doc.id,
+        }));
+
+        console.log(preferences);
+        setUserDetails(preferences);
+      } catch (error) {
+        console.error('Error fetching preferences:', error);
+      }
+    };
+
+    fetchPreferences();
+  }, []);
+
   const renderItem = ({item}) => (
     <Pressable
       style={styles.tagContainer}
-      onPress={() =>
+      onPress={() => {
+        console.log(item.id);
         navigation.push('SearchResults', {
           searchTarget: item.id,
-          isHash: true,
-        })
-      }>
+          blockedUsers: [],
+          blockedBy: [],
+          isHashTag: true,
+        });
+      }}>
       <View>
         <Text style={styles.tagText}>{item.id}</Text>
         <Text style={styles.tagUsage}>{item.count} used today</Text>
@@ -64,42 +121,43 @@ const Trending = ({navigation}) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator color={'#FF3131'} size={'small'} />
+        <ActivityIndicator color={color} size={'small'} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
       <Pressable
         style={styles.searchBar}
         onPress={() => navigation.navigate('Search')}>
         <Text style={styles.searchText}>Search networks or users</Text>
       </Pressable>
 
-      {tags.length === 0 ? (
-        <Text style={styles.noTrendingText}>No trending hashtags found.</Text>
-      ) : (
-        <View>
-          <Text
-            style={{
-              color: '#FF3131',
-              fontSize: 40,
-              marginLeft: 10,
-              fontWeight: 900,
-              letterSpacing: 1,
-            }}>
-            Trending
-          </Text>
+      <View style={{paddingVertical: 10}}>
+        <Text style={styles.trendingTitle}>Trending</Text>
+        <View style={{marginTop: 10}}>
           <FlatList
             data={tags}
             renderItem={renderItem}
             keyExtractor={item => item.id}
-            contentContainerStyle={{padding: 10}}
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: 10,
+            }}
           />
         </View>
-      )}
-    </View>
+      </View>
+
+      <View style={{flex: 1, paddingVertical: 10}}>
+        <RecommendedPosts key={uuid.v4()} userDetails={userDetails} />
+      </View>
+      {userDetails.map(item => (
+        <TrendingNetworks key={item.topic} item={item.topic} />
+      ))}
+      <View style={{height: 500}} />
+    </ScrollView>
   );
 };
 
@@ -134,23 +192,34 @@ const styles = StyleSheet.create({
   tagContainer: {
     padding: 10,
     marginBottom: 10,
-    borderRadius: 8,
+    marginRight: 10,
+    borderRadius: 5,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    width:"100%",
+    borderWidth: 0.5,
+    borderColor:'grey'
   },
   tagText: {
     fontSize: 18,
-    color: '#FF3131',
+    color: color,
     fontWeight: 'bold',
   },
   tagUsage: {
     fontSize: 15,
     color: 'grey',
-    padding: 3
+    padding: 8,
+  },
+  trendingTitle: {
+    color: color,
+    fontSize: 40,
+    marginLeft: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
   noTrendingText: {
-    color: 'white',
+    color: 'grey',
     textAlign: 'center',
     marginTop: 20,
   },

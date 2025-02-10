@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Text, View, TextInput, FlatList, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import Icon from 'react-native-vector-icons/Ionicons';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function AddingUsers({ navigation, route }) {
   const [searchText, setSearchText] = useState('');
@@ -50,14 +52,18 @@ export default function AddingUsers({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <View style={{marginBottom: 20}}>
-        <Icon name="chevron-down" color='white' size={20} onPress={() => navigation.goBack()} />
+      <View style={{ marginBottom: 20 }}>
+        <Icon name="chevron-down" color="white" size={20} onPress={() => navigation.goBack()} />
       </View>
+
       {selectedUsers.length > 0 && (
         <View style={styles.selectedUsersContainer}>
           <Text style={styles.selectedUsersTitle}>Selected Users:</Text>
           {selectedUsers.map((user) => (
-            <TouchableOpacity key={user.id} style={styles.userContainer}>
+            <TouchableOpacity
+              key={user.id}
+              style={[styles.userContainer, styles.selectedUserContainer]} 
+            >
               {user.profile_pic ? (
                 <Image source={{ uri: user.profile_pic }} style={styles.profilePic} />
               ) : (
@@ -65,14 +71,17 @@ export default function AddingUsers({ navigation, route }) {
                   <Text style={styles.profilePicPlaceholderText}>{user.name[0]}</Text>
                 </View>
               )}
-              <View>
-                <Text style={styles.userName}>{user.name}</Text>
-                <Text style={styles.bio} numberOfLines={1} ellipsizeMode="tail">{user.bio}</Text>
+              <View style={{ marginLeft: 8 }}>
+                <Text style={[styles.userName, styles.selectedUserName]}>{user.name}</Text>
+                <Text style={styles.bio} numberOfLines={1} ellipsizeMode="tail">
+                  {user.bio}
+                </Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
       )}
+
       <TextInput
         style={styles.searchInput}
         placeholder="Search users..."
@@ -97,14 +106,17 @@ export default function AddingUsers({ navigation, route }) {
                   <Text style={styles.profilePicPlaceholderText}>{item.name[0]}</Text>
                 </View>
               )}
-              <View>
+              <View style={{ marginLeft: 8 }}>
                 <Text style={styles.userName}>{item.name}</Text>
-                <Text style={styles.bio} numberOfLines={1} ellipsizeMode="tail">{item.bio}</Text>
+                <Text style={styles.bio} numberOfLines={1} ellipsizeMode="tail">
+                  {item.bio}
+                </Text>
               </View>
             </TouchableOpacity>
           )}
         />
       )}
+
       <TouchableOpacity style={styles.doneButton} onPress={handleDone}>
         <Text style={styles.doneButtonText}>Done</Text>
       </TouchableOpacity>
@@ -119,25 +131,25 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   searchInput: {
-    height: 40,
-    borderColor: 'grey',
-    borderWidth: 1,
-    borderRadius: 8,
+    padding: 15,
+    borderRadius: 5,
     paddingHorizontal: 10,
     marginBottom: 10,
     color: 'white',
+    backgroundColor: '#1a1a1a',
   },
   bio: {
-    color: 'grey'
+    color: 'grey',
+    maxWidth: '90%',
   },
   userContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: '#1a1a1a',
     borderRadius: 10,
     marginBottom: 10,
-    padding: 10
+    padding: 10,
   },
   profilePic: {
     width: 40,
@@ -168,6 +180,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     marginBottom: 10,
+  },
+  selectedUserContainer: {
+    backgroundColor: '#333', 
+  },
+  selectedUserName: {
+    color: color, 
   },
   doneButton: {
     marginTop: 20,

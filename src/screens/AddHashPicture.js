@@ -14,6 +14,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import Storage from '@react-native-firebase/storage';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function AddHashPicture({navigation, route}) {
   const [images, setImages] = useState([]);

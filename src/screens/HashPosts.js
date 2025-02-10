@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, FlatList } from 'react-native';
+import { View, FlatList, Text } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import Post from './Post';
 
-export default function HashPosts({ route }) {
-    const { hash } = route.params;
+export default function HashPosts({ hash }) {
     const [posts, setPosts] = useState([]);
 
     useEffect(() => {
@@ -34,6 +33,9 @@ export default function HashPosts({ route }) {
 
     return (
         <View style={{ backgroundColor: 'black', flex: 1 }}>
+        <View style={{margin: 10, backgroundColor: '#1a1a1a', padding: 10, borderRadius: 3}}>
+            <Text style={{color: 'white', fontSize: 18, fontWeight: 'bold'}}>Posts</Text>
+        </View>
             <FlatList
                 data={posts}
                 renderItem={renderItem}

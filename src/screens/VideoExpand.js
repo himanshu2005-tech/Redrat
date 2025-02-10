@@ -1,167 +1,251 @@
-import React, { useRef, useState } from 'react';
-import { View, Pressable, StyleSheet, Image, Text, Alert, PermissionsAndroid, Platform } from 'react-native';
+import React, {useState, useRef, useEffect} from 'react';
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  Image,
+  Text,
+  Animated,
+  BackHandler,
+  ActivityIndicator,
+  Modal,
+} from 'react-native';
 import Video from 'react-native-video';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Slider from '@react-native-community/slider';
-import RNFetchBlob from 'rn-fetch-blob';
+import Orientation from 'react-native-orientation-locker';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
-export default function VideoExpand({ navigation, route }) {
-  const [paused, setPaused] = useState(true);
+export default function VideoExpand({navigation, route}) {
+  const {
+    videoUri,
+    network_pic,
+    network_name,
+    network_id,
+    information,
+    currentUserDetails,
+  } = route.params;
+
+  const [paused, setPaused] = useState(!currentUserDetails.autoplayPostVideo);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [downloading, setDownloading] = useState(false);
+  const [volume, setVolume] = useState(
+    currentUserDetails.mutedPostVideo ? 0 : 1,
+  );
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [loadingPercentage, setLoadingPercentage] = useState(0);
+  const [replayControls, setReplayControls] = useState(false);
+  const [repeat, setRepeat] = useState(currentUserDetails.repeatPostVideo)
+  const [onBuffer, setOnBuffer] = useState(false);
+  const translateY = useRef(new Animated.Value(100)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
   const videoRef = useRef(null);
 
-  const togglePlayPause = () => {
-    setPaused(!paused);
+  useEffect(() => {
+    if (information) {
+      Animated.sequence([ 
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        handleBackPress();
+        return true;
+      },
+    );
+
+    return () => {
+      backHandler.remove();
+    };
+  }, [information]);
+
+  const handleBackPress = () => {
+    Orientation.unlockAllOrientations();
+    navigation.goBack();
   };
+
+  const togglePlayPause = () => setPaused(!paused);
 
   const handleVideoEnd = () => {
-    setPaused(true);
+    if (!currentUserDetails.repeatPostVideo) {
+      setReplayControls(true);
+      setPaused(true);
+    }
   };
 
-  const handleProgress = (progress) => {
+  const onReplay = () => {
+    setReplayControls(false); 
+    setPaused(false);
+    setCurrentTime(0); 
+    videoRef.current.seek(0); 
+    setRepeat(true); 
+  };
+  
+  const handleBuffer = ({isBuffering, buffered}) => {
+    if (isBuffering) {
+      const totalDuration = duration || 1; 
+      const bufferedDuration = buffered || 0;
+      setLoadingPercentage((bufferedDuration / totalDuration) * 100);
+      setOnBuffer(true);
+    } else {
+      setOnBuffer(false);
+    }
+  };
+
+  const handleProgress = progress => {
     setCurrentTime(progress.currentTime);
   };
 
-  const handleLoad = (meta) => {
+  const handleLoad = meta => {
     setDuration(meta.duration);
   };
 
-  const { videoUri, network_pic, network_name, network_id } = route.params;
-
-  const requestStoragePermission = async () => {
-    if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.MANAGE_EXTERNAL_STORAGE,
-        {
-          title: 'Storage Permission Required',
-          message: 'App needs access to your storage to download the video',
-        }
-      );
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        return true;
-      } else if (granted === PermissionsAndroid.RESULTS.DENIED) {
-        Alert.alert(
-          'Permission Denied',
-          'Storage permission is required to download the video. Please allow the permission to proceed.',
-          [
-            { text: 'Ask Again', onPress: () => requestStoragePermission() },
-            { text: 'Cancel', style: 'cancel' }
-          ]
-        );
-        return false;
-      } else {
-        Alert.alert('Permission Denied', 'Storage permission is required to download the video.');
-        return false;
-      }
+  const toggleFullscreen = () => {
+    if (isFullscreen) {
+      Orientation.unlockAllOrientations();
+    } else {
+      Orientation.lockToLandscape();
     }
-    return true;
+    setIsFullscreen(!isFullscreen);
   };
 
-  const downloadVideo = async () => {
-    try {
-      setDownloading(true);
-      const { config, fs } = RNFetchBlob;
-      const date = new Date();
-      const fileName = `video_${Math.floor(date.getTime() + date.getSeconds() / 2)}.mp4`;
-      const downloadDest = `${fs.dirs.DownloadDir}/${fileName}`;
+  const toggleControls = () => setShowControls(!showControls);
 
-      config({
-        fileCache: true,
-        appendExt: 'mp4',
-        path: downloadDest,
-        notification: true,
-        addAndroidDownloads: {
-          useDownloadManager: true,
-          notification: true,
-          path: downloadDest,
-          description: 'Downloading video',
-        },
-      })
-        .fetch('GET', videoUri)
-        .progress((received, total) => {
-          const progressPercent = (received / total) * 100;
-          setDownloadProgress(progressPercent.toFixed(0));
-          console.log('Download progress:', progressPercent.toFixed(0));
-        })
-        .then((res) => {
-          console.log('Download complete:', res);
-          Alert.alert('Download Complete', 'Video has been saved to your device.');
-          setDownloadProgress(0);
-          setDownloading(false);
-        })
-        .catch((error) => {
-          console.error('Download error:', error);
-          Alert.alert('Download Error', 'An error occurred while downloading the video.');
-          setDownloadProgress(0);
-          setDownloading(false);
-        });
-    } catch (error) {
-      console.error('Download error:', error);
-      Alert.alert('Download Error', 'An error occurred while downloading the video.');
-      setDownloadProgress(0);
-      setDownloading(false);
-    }
-  };
+  const toggleMute = () => setVolume(volume === 0 ? 1 : 0);
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Icon name="chevron-down-outline" size={30} color="#FF3131" />
-      </Pressable>
-      <View style={styles.videoContainer}>
-        <Video
-          source={{ uri: videoUri }}
-          style={styles.video}
-          resizeMode="contain"
-          controls={false}
-          muted={false}
-          paused={paused}
-          ref={videoRef}
-          repeat={true}
-          onEnd={handleVideoEnd}
-          onProgress={handleProgress}
-          onLoad={handleLoad}
-          selectedVideoTrack={{
-            type: 'resolution',
-            value: 720,
-          }}
-        />
-        <View style={styles.controlOverlay}>
-          {network_pic && (
-            <Pressable
-              style={styles.networkInfo}
-              onPress={() => navigation.navigate("Network", { networkId: network_id })}
-            >
-              <Image source={{ uri: network_pic }} style={styles.networkImage} />
-              <Text style={styles.networkText}>{network_name}</Text>
-            </Pressable>
-          )}
-          <View style={styles.controls}>
-            <Pressable onPress={togglePlayPause}>
-              <Icon name={paused ? 'play' : 'pause'} size={30} color="#FF3131" />
-            </Pressable>
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={duration}
-              value={currentTime}
-              onValueChange={(value) => videoRef.current.seek(value)}
-              minimumTrackTintColor="#FF3131"
-              maximumTrackTintColor="#FFFFFF"
-              thumbTintColor="#FF3131"
-            />
-            <Pressable onPress={downloadVideo} disabled={downloading}>
-              <Icon name="download-outline" size={30} color={downloading ? 'grey' : '#FF3131'} />
-            </Pressable>
-            {downloading && (
-              <Text style={styles.downloadProgress}>downloading...</Text>
+      <Pressable style={styles.container} onPress={toggleControls}>
+        {showControls && (
+          <Pressable style={styles.backButton} onPress={handleBackPress}>
+            <Icon name="chevron-down-outline" size={30} color={color} />
+          </Pressable>
+        )}
+        <View style={styles.videoContainer}>
+          <Video
+            source={{uri: videoUri}}
+            style={styles.video}
+            resizeMode="contain"
+            controls={false}
+            muted={volume === 0}
+            paused={paused}
+            ref={videoRef}
+            repeat={repeat}
+            onEnd={handleVideoEnd}
+            onProgress={handleProgress}
+            onLoad={handleLoad}
+            onBuffer={handleBuffer} 
+            selectedVideoTrack={{type: 'resolution', value: 720}}
+            rate={1}
+          />
+          <Pressable style={styles.controlOverlay}>
+            {showControls && (
+              <View>
+                {network_pic && (
+                  <Pressable
+                    style={styles.networkInfo}
+                    onPress={() =>
+                      navigation.navigate('Network', {networkId: network_id})
+                    }>
+                    <Image
+                      source={{uri: network_pic}}
+                      style={styles.networkImage}
+                    />
+                    <Text style={styles.networkText}>{network_name}</Text>
+                  </Pressable>
+                )}
+                {information && (
+                  <Animated.View
+                    style={[
+                      styles.infoContainer,
+                      {transform: [{translateY: translateY}], opacity: opacity},
+                    ]}>
+                    <Text style={{color: 'white', textAlign: 'left'}}>
+                      {information}
+                    </Text>
+                  </Animated.View>
+                )}
+                <View style={styles.controls}>
+                  <Pressable onPress={togglePlayPause}>
+                    <Icon
+                      name={paused ? 'play' : 'pause'}
+                      size={30}
+                      color={color}
+                    />
+                  </Pressable>
+                  <Pressable onPress={toggleMute} style={styles.muteButton}>
+                    <Icon
+                      name={volume === 0 ? 'volume-mute' : 'volume-high'}
+                      size={30}
+                      color={color}
+                    />
+                  </Pressable>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={0}
+                    maximumValue={duration}
+                    value={currentTime}
+                    onValueChange={value => videoRef.current.seek(value)}
+                    minimumTrackTintColor={color}
+                    maximumTrackTintColor="#FFFFFF"
+                    thumbTintColor={color}
+                  />
+                  <Pressable onPress={toggleFullscreen}>
+                    <Icon
+                      name={isFullscreen ? 'contract' : 'expand'}
+                      size={30}
+                      color={color}
+                    />
+                  </Pressable>
+                </View>
+              </View>
             )}
+          </Pressable>
+        </View>
+      </Pressable>
+      <Modal
+        transparent={true}
+        visible={replayControls}
+        animationType="slide"
+        onRequestClose={() => setReplayControls(false)}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}>
+          <View
+            style={{
+              backgroundColor: 'black',
+              padding: 20,
+              borderRadius: 10,
+              width: '90%',
+              alignItems: 'center',
+            }}>
+            <Icon
+              name="reload-outline"
+              color="white"
+              size={40}
+              onPress={onReplay}
+            />
           </View>
         </View>
-      </View>
+      </Modal>
     </View>
   );
 }
@@ -195,6 +279,7 @@ const styles = StyleSheet.create({
     right: 10,
     flexDirection: 'column',
     alignItems: 'center',
+    flex: 1,
   },
   networkInfo: {
     flexDirection: 'row',
@@ -213,16 +298,29 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginLeft: 15,
   },
+  infoContainer: {
+    alignSelf: 'flex-start',
+    marginBottom: 5,
+  },
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  slider: {
-    flex: 1,
+  muteButton: {
     marginLeft: 10,
   },
-  downloadProgress: {
+  slider: {
+    width: '70%',
+    marginHorizontal: 10,
+  },
+  loadingText: {
     color: 'white',
-    marginLeft: 10,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 10,
   },
 });
+
+
+
+

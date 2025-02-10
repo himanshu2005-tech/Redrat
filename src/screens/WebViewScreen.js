@@ -2,6 +2,8 @@ import React, { useRef } from 'react';
 import { View, StyleSheet, Pressable, Linking, ToastAndroid } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Icon from 'react-native-vector-icons/Ionicons';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 const WebViewScreen = ({ route, navigation }) => {
   const { url } = route.params;
@@ -37,13 +39,13 @@ const WebViewScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={closeWebView}>
-          <Icon name={'close-outline'} size={27} color="#FF3131" />
+          <Icon name={'close-outline'} size={27} color={color} />
         </Pressable>
         <Pressable onPress={reloadPage}>
-          <Icon name={'reload'} size={27} color="#FF3131" />
+          <Icon name={'reload'} size={27} color={color} />
         </Pressable>
         <Pressable onPress={openInExternalBrowser}>
-          <Icon name={'open-outline'} size={27} color="#FF3131" />
+          <Icon name={'open-outline'} size={27} color={color} />
         </Pressable>
       </View>
       <WebView

@@ -4,6 +4,8 @@ import { Text, View, Image, Pressable } from 'react-native'
 import firestore from '@react-native-firebase/firestore'
 import auth from '@react-native-firebase/auth'
 import { useNavigation } from '@react-navigation/native'
+import color from './color'
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function FriendUser({item}){
     const navigation = useNavigation()
@@ -48,10 +50,10 @@ export default function FriendUser({item}){
       <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
       <View style={{flexDirection: 'row', alignItems: 'center', gap: 10, maxWidth: "60%"}}>
       <Image source={{uri: userData.profile_pic}} style={{height: 40, width: 40, borderRadius: 20, marginLeft: 10}} />
-        <Text style={{color: '#FF3131', fontSize: 20, fontWeight: 'bold'}}>{userData.name}</Text>
+        <Text style={{color: color, fontSize: 20, fontWeight: 'bold'}}>{userData.name}</Text>
         </View>
         <View style={{flexDirection: 'row', gap: 10}}>
-        <Pressable style={{backgroundColor: "#FF3131", padding: 10, borderRadius: 4}} onPress={onRequestAccept}>
+        <Pressable style={{backgroundColor: color, padding: 10, borderRadius: 4}} onPress={onRequestAccept}>
             <Text style={{color: 'white', fontSize: 18}}>Accept</Text>
         </Pressable>
         <Pressable style={{backgroundColor: "#1a1a1a", padding: 10, borderRadius: 4}} onPress={cancelRequest}>

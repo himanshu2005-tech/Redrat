@@ -7,10 +7,18 @@ import {
   Pressable,
   Image,
   TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import moment from 'moment';
+import Post from './Post';
+import updateTribet from './updateTribet';
+import { splitString } from '../texting/textSplit';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 const NetworkDisplay = ({
   network_id,
@@ -20,9 +28,8 @@ const NetworkDisplay = ({
   onSelectSubtopic,
 }) => {
   const [networkData, setNetworkData] = useState(null);
-  const [adminProfilePic, setAdminProfilePic] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isAdminOnly, setIsAdminOnly] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
     const fetchNetworkData = async () => {
@@ -31,28 +38,19 @@ const NetworkDisplay = ({
           .collection('Network')
           .doc(network_id)
           .get();
+
         if (networkDoc.exists) {
-          const networkData = networkDoc.data();
-          setNetworkData(networkData);
+          const data = networkDoc.data();
+          setNetworkData(data);
 
-          if (networkData.isAdminOnly && networkData.admin == auth().currentUser.uid) {
-            setIsAdminOnly(true);
+          if (data.isAdminOnly && data.admin === auth().currentUser.uid) {
+            setIsAuthorized(true);
+          } else if (!data.isAdminOnly) {
+            setIsAuthorized(true);
           }
-
-          const adminDoc = await firestore()
-            .collection('Users')
-            .doc(networkData.admin)
-            .get();
-          if (adminDoc.exists) {
-            setAdminProfilePic(adminDoc.data().profile_pic);
-          } else {
-            console.warn('Admin user document does not exist');
-          }
-        } else {
-          console.warn('Network document does not exist');
         }
       } catch (error) {
-        console.error('Error fetching network or admin data:', error);
+        console.error('Error fetching network data:', error);
       } finally {
         setLoading(false);
       }
@@ -69,17 +67,8 @@ const NetworkDisplay = ({
     );
   }
 
-  if(!isAdminOnly){
+  if (!isAuthorized || !networkData) {
     return null;
-  }
-  if (!networkData) {
-    return (
-      <View style={styles.container}>
-        <Text style={{color: 'white', fontWeight: 'bold'}}>
-          Network deleted
-        </Text>
-      </View>
-    );
   }
 
   return (
@@ -92,12 +81,11 @@ const NetworkDisplay = ({
             source={{uri: networkData.profile_pic}}
             style={styles.profilePic}
           />
-          <View style={styles.textContainer}>
             <Text style={styles.networkName}>{networkData.network_name}</Text>
-          </View>
         </View>
         <Text style={styles.networkType}>{networkData.network_type}</Text>
       </Pressable>
+
       {selected && (
         <View style={styles.subtopicsContainer}>
           <Text style={styles.subtopicsHeader}>Select Subtopics:</Text>
@@ -124,22 +112,31 @@ export default function Repost({route, navigation}) {
   const [selectedNetworks, setSelectedNetworks] = useState({});
   const [selectedSubtopics, setSelectedSubtopics] = useState({});
   const [networkNames, setNetworkNames] = useState({});
+  const [reply, setReply] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    console.log('post_id', post_id);
+    console.log('network_id', network_id);
+  
     const fetchNetworkIDs = async () => {
       try {
         const data = await firestore()
           .collection('Users')
           .doc(auth().currentUser.uid)
+          .collection("JoinedNetworks")
           .get();
-        setNetworkIDs(data.data().joined_networks || []);
+  
+        const networkSnapshot = data.docs.map(doc => doc.id);
+        setNetworkIDs(networkSnapshot || []);
       } catch (error) {
         console.warn(error);
       }
     };
-
+  
     fetchNetworkIDs();
   }, []);
+  
 
   const handleSelect = (id, name) => {
     setSelectedNetworks(prevSelected =>
@@ -173,24 +170,87 @@ export default function Repost({route, navigation}) {
   const handleRepost = async () => {
     try {
       for (const id of Object.keys(selectedNetworks)) {
-        await firestore()
-          .collection('Network')
-          .doc(id)
+        if (!selectedSubtopics[id] || selectedSubtopics[id].length === 0) {
+          alert(`No subtopics selected in ${networkNames[id]}`);
+          return;
+        }
+      }
+      setLoading(true);
+      for (const id of Object.keys(selectedNetworks)) {
+        const postRef = await firestore()
           .collection('Posts')
           .add({
-            title: post.title,
-            information: post.information,
+            title: splitString(reply),
             selectedSubtopics: selectedSubtopics[id] || [],
-            network_id: id,
             posted_by: auth().currentUser.uid,
             createdAt: firestore.FieldValue.serverTimestamp(),
             network_name: networkNames[id],
-            imageUrls: post.imageUrls,
-            reposted_from_network: post.network_name,
-            reposted_network_id: network_id,
+            repost_post_id: post_id,
+            network_id: id,
+            isRepost: true,
+            savePoint: 0,
+            likePoint: 0,
+            viewPoint: 0,
+            likeCount: 0
           });
+        const new_post_id = postRef.id;
+        await firestore()
+          .collection('Users')
+          .doc(auth().currentUser.uid)
+          .collection('Posts')
+          .add({
+            post_id: new_post_id,
+            createdAt: firestore.FieldValue.serverTimestamp(),
+          });
+        const rawInput = `${reply}`;
+        const extractedHashes = rawInput.match(/#\w+/g) || [];
+        const today = moment().format('YYYY-MM-DD');
+        await updateTribet(auth().currentUser.uid, 20, `Reposted`);
+        if (extractedHashes.length === 0) {
+          navigation.goBack();
+          setLoading(true);
+          return;
+        }
+        const batch = firestore().batch();
+
+        for (const hash of extractedHashes) {
+          const hashRef = firestore().collection('HashTags').doc(hash);
+
+          const hashDoc = await hashRef.get();
+          const data = hashDoc.data();
+
+          if (data?.lastUpdated !== today) {
+            batch.set(
+              hashRef,
+              {
+                countForToday: 1,
+                [today]: firestore.FieldValue.increment(1),
+                lastUpdated: today,
+                totalUsed: firestore.FieldValue.increment(1),
+              },
+              {merge: true},
+            );
+          } else {
+            batch.set(
+              hashRef,
+              {
+                countForToday: firestore.FieldValue.increment(1),
+                [today]: firestore.FieldValue.increment(1),
+                totalUsed: firestore.FieldValue.increment(1),
+              },
+              {merge: true},
+            );
+          }
+        }
+
+        try {
+          await batch.commit();
+          console.log(`Updated usage for hashtags on ${today}`);
+        } catch (error) {
+          console.error('Error updating hashtags:', error);
+        }
       }
-      alert('Reposted successfully!');
+      setLoading(false);
     } catch (error) {
       console.error('Error reposting:', error);
     }
@@ -204,14 +264,23 @@ export default function Repost({route, navigation}) {
           <Icon
             name="chevron-back"
             size={28}
-            color="#FF3131"
+            color={color}
             onPress={() => navigation.goBack()}
           />
           <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-            Reposting from {post.network_name}'s Network
+            Your Autorized Networks
           </Text>
         </View>
       </View>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Add a comment..."
+        placeholderTextColor="gray"
+        value={reply}
+        onChangeText={setReply}
+      />
+
       <FlatList
         data={networkIDs}
         keyExtractor={item => item}
@@ -228,9 +297,28 @@ export default function Repost({route, navigation}) {
         }
       />
 
-      <TouchableOpacity style={styles.repostButton} onPress={handleRepost}>
-        <Text style={styles.repostButtonText}>Repost</Text>
-      </TouchableOpacity>
+      {loading ? (
+        <TouchableOpacity
+          style={[
+            styles.repostButton,
+            {backgroundColor: !reply ? '#1a1a1a' : color},
+          ]}
+          disabled={true}>
+          <ActivityIndicator size="small" color="white" />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[
+            styles.repostButton,
+            {backgroundColor: !reply ? '#1a1a1a' : color},
+          ]}
+          onPress={handleRepost}
+          disabled={reply ? false : true}>
+          <Text style={styles.repostButtonText}>
+            {reply ? 'Repost' : 'Add a Reply'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -242,13 +330,11 @@ const styles = StyleSheet.create({
     zIndex: 100,
     backgroundColor: 'black',
     width: '100%',
-    paddingVertical: 15,
+    paddingVertical: 10,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderBottomWidth: 0.2,
-    borderColor: '#ccc',
   },
   headerContent: {
     alignItems: 'center',
@@ -257,7 +343,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: {
-    color: '#FF3131',
+    color: "white",
     fontSize: 16,
     fontWeight: 'bold',
     maxWidth: '90%',
@@ -272,86 +358,88 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: 'black',
     alignItems: 'center',
-    borderRadius: 3,
-    borderWidth: 0.7,
-    shadowColor: '#000',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 2,
   },
   leftContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
   },
   profilePic: {
-    width: 50,
-    height: 50,
-    borderRadius: 50,
-  },
-  textContainer: {
-    justifyContent: 'center',
-  },
-  networkName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FF3131',
-  },
-  networkBio: {
-    fontSize: 16,
-    color: 'gray',
-  },
-  networkType: {
-    fontSize: 15,
-    color: 'gray',
+    width: 35,
+    height: 35,
+    borderRadius: 40,
     marginRight: 10,
   },
+  textContainer: {
+    marginTop: 5,
+  },
+  networkName: {
+    color: color,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  networkBio: {
+    color: 'grey',
+    fontSize: 14,
+    maxWidth: '90%',
+  },
+  networkType: {
+    color: color,
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    position: 'absolute',
+    right: 5,
+  },
   selected: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'black',
+    borderColor: color,
   },
   subtopicsContainer: {
-    padding: 16,
-    backgroundColor: 'black',
-    borderRadius: 3,
+    marginLeft: 10,
   },
   subtopicsHeader: {
+    color: color,
+    marginBottom: 5,
     fontSize: 16,
-    color: '#FF3131',
-    marginBottom: 10,
   },
   subtopic: {
     padding: 10,
-    borderRadius: 5,
-    marginVertical: 5,
     backgroundColor: '#1a1a1a',
+    marginVertical: 5,
+    borderRadius: 5,
   },
   selectedSubtopic: {
-    backgroundColor: '#FF3131',
-    borderColor: '#FF3131',
+    backgroundColor: color,
   },
   subtopicText: {
     color: 'white',
-    fontWeight: 'bold',
+    textAlign: 'center',
   },
   repostButton: {
-    backgroundColor: '#FFEDED',
-    padding: 10,
+    backgroundColor: color,
+    padding: 15,
+    borderRadius: 5,
+    margin: 10,
     alignItems: 'center',
-    marginBottom: 15,
-    width: '80%',
-    alignSelf: 'center',
-    borderRadius: 15,
-    marginTop: 10,
+  },
+  repostDisableButton: {
+    backgroundColor: '#1a1a1a',
+    padding: 15,
+    borderRadius: 5,
+    margin: 10,
+    alignItems: 'center',
   },
   repostButtonText: {
-    color: '#FF3131',
+    color: 'white',
     fontWeight: 'bold',
-    fontSize: 15,
+  },
+  input: {
+    color: 'white',
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 10,
+    margin: 10,
+    borderRadius: 3,
   },
 });

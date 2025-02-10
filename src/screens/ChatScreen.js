@@ -23,7 +23,6 @@ import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import storage from '@react-native-firebase/storage';
 import {SHA256} from 'crypto-js';
 import moment from 'moment';
-import {SharedElement} from 'react-navigation-shared-element';
 import {messagingRef, firestoreRef, authRef} from './firebase';
 import {
   FlingGestureHandler,
@@ -40,7 +39,10 @@ import Post from './Post';
 import Video from 'react-native-video';
 import {Swipeable} from 'react-native-gesture-handler';
 import {useNavigation} from '@react-navigation/native';
-
+import Bluing from '../texting/Bluing';
+import ChatEmpty from './ChatEmpty';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function ChatScreen({route}) {
   const navigation = useNavigation();
@@ -67,7 +69,7 @@ export default function ChatScreen({route}) {
   const [myName, setMyName] = useState();
   const videoRef = useRef(null);
   const [lastSeen, setLastSeen] = useState();
-  const sendPushNotification = require("../../sendNotification");
+  const sendPushNotification = require('../../sendNotification');
 
   useEffect(() => {
     const generateChatRoomId = () => {
@@ -76,12 +78,16 @@ export default function ChatScreen({route}) {
         const concatenatedIds = sortedUids.join('');
         const generatedHash = SHA256(concatenatedIds).toString();
         setChatroomid(generatedHash);
-        console.log("chatrokm", chatroomid)
+        console.log('chatrokm', chatroomid);
       }
     };
 
     generateChatRoomId();
   }, [id, currentUserUid]);
+
+  const [lastVisible, setLastVisible] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     if (!chatroomid || !id) return;
@@ -105,7 +111,7 @@ export default function ChatScreen({route}) {
       );
 
     return () => unsubscribe();
-  }, [chatroomid, id, navigation, messages.length, messages]);
+  }, [messages, id, chatroomid, navigation]);
 
   useEffect(() => {
     const fetchPic = async () => {
@@ -189,6 +195,75 @@ export default function ChatScreen({route}) {
   }, []);
 
   useEffect(() => {
+    if (chatroomid) {
+      const unsubscribe = firestore()
+        .collection('ChatRooms')
+        .doc(chatroomid)
+        .collection('Messages')
+        .orderBy('createdAt', 'desc')
+        .limit(20)
+        .onSnapshot(snapshot => {
+          const newMessages = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+
+          if (newMessages.length > 0) {
+            setMessages(prevMessages => {
+              const existingIds = prevMessages.map(msg => msg.id);
+              const filteredNewMessages = newMessages.filter(
+                msg => !existingIds.includes(msg.id),
+              );
+              return [...filteredNewMessages, ...prevMessages];
+            });
+          }
+        });
+
+      return () => unsubscribe();
+    }
+  }, [chatroomid]);
+
+  const fetchMessages = async (loadMore = false) => {
+    if (loading || !chatroomid) return;
+
+    setLoading(true);
+
+    let query = firestore()
+      .collection('ChatRooms')
+      .doc(chatroomid)
+      .collection('Messages')
+      .orderBy('createdAt', 'desc')
+      .limit(20);
+
+    if (loadMore && lastVisible) {
+      query = query.startAfter(lastVisible);
+    }
+
+    const snapshot = await query.get();
+
+    if (!snapshot.empty) {
+      const newMessages = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setMessages(prevMessages =>
+        loadMore ? [...prevMessages, ...newMessages] : newMessages,
+      );
+
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+    } else {
+      setHasMore(false);
+    }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchMessages();
+  }, [chatroomid]);
+
+  useEffect(() => {
     const checkPinnedStatus = async () => {
       try {
         const pinDoc = await firestore()
@@ -241,36 +316,7 @@ export default function ChatScreen({route}) {
 
       return () => unsubscribe();
     }
-  }, [chatroomid, id, navigation, messages]);
-
-  useEffect(() => {
-    if (chatroomid) {
-      const unsubscribe = firestore()
-        .collection('ChatRooms')
-        .doc(chatroomid)
-        .collection('Messages')
-        .orderBy('createdAt', 'desc')
-        .onSnapshot(snapshot => {
-          const fetchedMessages = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-
-          setMessages(prevMessages => {
-            const combinedMessages = [...fetchedMessages, ...prevMessages];
-
-            const uniqueMessages = combinedMessages.filter(
-              (msg, index, self) =>
-                index === self.findIndex(t => t.id === msg.id),
-            );
-
-            return uniqueMessages.sort((a, b) => b.createdAt - a.createdAt);
-          });
-        });
-
-      return () => unsubscribe();
-    }
-  }, [chatroomid]);
+  }, [chatroomid, id, navigation, messages.length]);
 
   const pinChat = async () => {
     setPinning(true);
@@ -297,7 +343,12 @@ export default function ChatScreen({route}) {
     if (message.trim() === '' && !imageUri && !videoUri) return;
 
     setSending(true);
-    sendPushNotification(myName, userDetails.fcmToken, message);
+    console.log("UserDetails", userDetails)
+    sendPushNotification(myName, userDetails.fcmToken, message, {
+      id: auth().currentUser.uid,
+      type: "CHAT_MESSAGE"
+    });
+
     const newMessage = {
       text: message,
       createdAt: firestore.FieldValue.serverTimestamp(),
@@ -314,7 +365,8 @@ export default function ChatScreen({route}) {
       const chatroomSnapshot = await chatroomDocRef
         .collection('Messages')
         .get();
-      const messagesCount = chatroomSnapshot.size || "0";
+      const messages = chatroomSnapshot.docs;
+      const messagesCount = messages.length;
 
       if (messagesCount === 0) {
         await pinChat();
@@ -338,6 +390,50 @@ export default function ChatScreen({route}) {
         newMessage.video = await storageRef.getDownloadURL();
       }
 
+      let lastMessageText = '';
+
+      if (newMessage.text) {
+        lastMessageText = newMessage.text;
+      } else if (newMessage.image) {
+        lastMessageText = 'Image File';
+      } else if (newMessage.video) {
+        lastMessageText = 'Video file';
+      } else if (newMessage.replyPost) {
+        lastMessageText = 'Post';
+      }
+
+      try {
+        await firestore()
+          .collection('Users')
+          .doc(auth().currentUser.uid)
+          .collection('ChatRooms')
+          .doc(chatroomid)
+          .update({
+            lastMessageText,
+            gaingOrderTimeStamp: firestore.FieldValue.serverTimestamp(),
+          });
+      } catch (error) {
+        console.warn(error);
+      }
+      try {
+        await firestore()
+          .collection('Users')
+          .doc(id)
+          .collection('ChatRooms')
+          .doc(chatroomid)
+          .update({
+            lastMessageText,
+            gaingOrderTimeStamp: firestore.FieldValue.serverTimestamp(),
+          });
+      } catch (error) {
+        console.warn(error);
+      }
+
+      await chatroomDocRef.set({
+        lastMessageText,
+        lastMessageTimestamp: firestore.FieldValue.serverTimestamp(),
+      });
+
       if (reply) {
         if (reply.text) {
           newMessage.replyText = reply.text;
@@ -354,43 +450,7 @@ export default function ChatScreen({route}) {
         newMessage.replyingTo = id;
       }
 
-      
       await chatroomDocRef.collection('Messages').add(newMessage);
-
-      let lastMessageText = '';
-
-      if (newMessage.text) {
-        lastMessageText = newMessage.text;
-      } else if (newMessage.image) {
-        lastMessageText = 'Image file';
-      } else if (newMessage.video) {
-        lastMessageText = 'Video file';
-      } else if (newMessage.replyPost) {
-        lastMessageText = 'Post';
-      }
-
-      await chatroomDocRef.set({
-        lastMessageText,
-        lastMessageTimestamp: firestore.FieldValue.serverTimestamp(),
-      });
-      await firestore()
-        .collection('Users')
-        .doc(auth().currentUser.uid)
-        .collection('ChatRooms')
-        .doc(chatroomid)
-        .update({
-          lastMessageText,
-          gaingOrderTimeStamp: firestore.FieldValue.serverTimestamp(),
-        });
-      await firestore()
-        .collection('Users')
-        .doc(id)
-        .collection('ChatRooms')
-        .doc(chatroomid)
-        .update({
-          lastMessageText,
-          gaingOrderTimeStamp: firestore.FieldValue.serverTimestamp(),
-        });
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -467,11 +527,11 @@ export default function ChatScreen({route}) {
           .collection('ChatRooms')
           .doc(chatroomid)
           .update({
-            lastMessageText: 'Message Deleted',
+            lastMessageText: `${myName} has deleted a message`,
           });
 
         await chatroomDocRef.set({
-          lastMessageText: 'Message Deleted',
+          lastMessageText: `${myName} has deleted a message`,
         });
       }
       setSelectedMessage(null);
@@ -546,7 +606,7 @@ export default function ChatScreen({route}) {
                   <Icon
                     name={paused ? 'play' : 'pause'}
                     size={20}
-                    color="#FF3131"
+                    color={color}
                   />
                 </Pressable>
               </View>
@@ -569,9 +629,7 @@ export default function ChatScreen({route}) {
           const [post_id, network_id] = item.replyPost;
           return (
             <View style={{opacity: 0.6, width: '80%'}}>
-              <SharedElement id={`post.${post_id}`}>
-                <Post post_id={post_id} network_id={network_id} isSub={true} />
-              </SharedElement>
+              <Post post_id={post_id} network_id={network_id} isSub={true} />
             </View>
           );
         }
@@ -804,10 +862,10 @@ export default function ChatScreen({route}) {
                 color={'white'}
                 onPress={() => setReply(null)}
               />
-              <View style={{flexDirection: 'row', gap: 10}}>
+              <View style={{flexDirection: 'row', gap: 10, maxWidth: '80%'}}>
                 <Text
                   style={{color: 'white', fontSize: 18}}
-                  numberOfLines={10}
+                  numberOfLines={2}
                   ellipsizeMode="tail">
                   {item.text}
                 </Text>
@@ -824,7 +882,7 @@ export default function ChatScreen({route}) {
               styles.videoContainer,
               {
                 alignSelf: isCurrentUser ? 'flex-end' : 'flex-start',
-                backgroundColor: isCurrentUser ? '#1a1a1a' : '#FF3131',
+                backgroundColor: isCurrentUser ? '#1a1a1a' : color,
               },
             ]}
             onPress={() =>
@@ -852,7 +910,7 @@ export default function ChatScreen({route}) {
                 <Icon
                   name={paused ? 'play' : 'pause'}
                   size={30}
-                  color={isCurrentUser ? '#FF3131' : '#1a1a1a'}
+                  color={isCurrentUser ? color : '#1a1a1a'}
                 />
               </Pressable>
             </View>
@@ -883,7 +941,7 @@ export default function ChatScreen({route}) {
               <Icon
                 name={'chevron-forward'}
                 size={22}
-                color={isCurrentUser ? 'white' : '#FF3131'}
+                color={isCurrentUser ? 'white' : color}
               />
             </View>
           </Pressable>
@@ -899,14 +957,20 @@ export default function ChatScreen({route}) {
                 styles.messageContainer,
                 isCurrentUser && styles.currentUserMessage,
               ]}>
-              <Pressable style={styles.postShare}>
-                <SharedElement id={`post.${item.post_id}`}>
-                  <Post
-                    network_id={item.network_id}
-                    post_id={item.post_id}
-                    isSub={true}
-                  />
-                </SharedElement>
+              <Pressable
+                style={styles.postShare}
+                onPress={() =>
+                  navigation.navigate('PostExpand', {
+                    post_id: item.post_id,
+                    network_id: item.network_id,
+                  })
+                }>
+                <Text style={{color: 'white'}}>
+                  {!isCurrentUser ? userDetails.name : 'You'} shared a post from{' '}
+                  <Text style={{color: 'white', fontWeight: 'bold'}}>
+                    {item.network_name}
+                  </Text>
+                </Text>
               </Pressable>
             </View>
           </Pressable>
@@ -916,7 +980,7 @@ export default function ChatScreen({route}) {
         <Pressable
           style={[
             styles.textMessage,
-            {backgroundColor: isCurrentUser ? '#1a1a1a' : '#FF3131'},
+            {backgroundColor: isCurrentUser ? '#1a1a1a' : color},
             {alignSelf: isCurrentUser ? 'flex-end' : 'flex-start'},
           ]}
           onLongPress={() => (isCurrentUser ? handleLongPress(item) : null)}>
@@ -931,7 +995,7 @@ export default function ChatScreen({route}) {
               <Image source={{uri: item.image}} style={styles.image} />
             </Pressable>
           )}
-          {item.text && <Text style={{color: 'white'}}>{item.text}</Text>}
+          {item.text && <Bluing text={item.text} style={{color: 'white'}} />}
         </Pressable>
       );
     };
@@ -955,45 +1019,6 @@ export default function ChatScreen({route}) {
             </View>
           ) : null}
           <MessageContent />
-          <View
-            style={{
-              position: 'absolute',
-              right: 5,
-              bottom: 12,
-              padding: 5,
-              backgroundColor: 'black',
-              borderRadius: 20,
-            }}>
-            {!isReply &&
-              isCurrentUser &&
-              (lastSeen && item.createdAt ? (
-                lastSeen.seconds > item.createdAt.seconds ? (
-                  <Icon
-                    name={'reorder-three'}
-                    size={20}
-                    color={'white'}
-                    onPress={() => setReply(null)}
-                    style={{alignSelf: 'center'}}
-                  />
-                ) : (
-                  <Icon
-                    name={'reorder-two'}
-                    size={20}
-                    color={'white'}
-                    onPress={() => setReply(null)}
-                    style={{alignSelf: 'center'}}
-                  />
-                )
-              ) : (
-                <Icon
-                  name={'remove-outline'}
-                  size={20}
-                  color={'white'}
-                  onPress={() => setReply(null)}
-                  style={{alignSelf: 'center'}}
-                />
-              ))}
-          </View>
         </Animated.View>
       </FlingGestureHandler>
     );
@@ -1002,7 +1027,7 @@ export default function ChatScreen({route}) {
   if (loadingUserDetails) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF3131" />
+        <ActivityIndicator size="large" color={color} />
       </View>
     );
   }
@@ -1017,7 +1042,7 @@ export default function ChatScreen({route}) {
           <Icon
             name={'chevron-back'}
             size={24}
-            color={'#FF3131'}
+            color={color}
             onPress={() => navigation.goBack()}
           />
           <Image
@@ -1035,27 +1060,56 @@ export default function ChatScreen({route}) {
           </Text>
         </View>
       </View>
-      <FlatList
-        data={messages}
-        renderItem={renderMessageItem}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.messagesList}
-        inverted
-      />
+      {messages.length > 0 ? (
+        <FlatList
+          data={messages}
+          renderItem={renderMessageItem}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.messagesList}
+          inverted
+          ListFooterComponent={
+            hasMore && (
+              <TouchableOpacity
+                style={{
+                  width: '90%',
+                  alignSelf: 'center',
+                  backgroundColor: '#1a1a1a',
+                  padding: 15,
+                  borderRadius: 5,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 15,
+                  justifyContent: 'center',
+                }}
+                onPress={() => fetchMessages(true)}
+                disabled={loading}>
+                <Icon name="receipt" color="white" size={18} />
+                <Text
+                  style={{color: 'white', textAlign: 'center', fontSize: 14}}>
+                  {loading
+                    ? 'Fetching New Messages'
+                    : 'Load new messages if available'}
+                </Text>
+              </TouchableOpacity>
+            )
+          }
+        />
+      ) : (
+        <ChatEmpty userDetails={userDetails} id={id} />
+      )}
       {reply && (
         <View
           style={{backgroundColor: '#1a1a1a', padding: 10, borderRadius: 5}}>
           {renderMessageItem({item: reply, isReply: true})}
         </View>
       )}
-
       {imageUri ? (
         <View style={styles.selectedImageContainer}>
           <Image source={{uri: imageUri}} style={styles.selectedImage} />
           <TouchableOpacity
             onPress={onCancel}
             style={{
-              backgroundColor: '#FF3131',
+              backgroundColor: color,
               paddingHorizontal: 20,
               padding: 5,
               borderRadius: 5,
@@ -1101,17 +1155,13 @@ export default function ChatScreen({route}) {
               padding: 10,
             }}>
             <Pressable onPress={togglePlayPause}>
-              <Icon
-                name={paused ? 'play' : 'pause'}
-                size={30}
-                color="#FF3131"
-              />
+              <Icon name={paused ? 'play' : 'pause'} size={30} color={color} />
             </Pressable>
           </View>
           <TouchableOpacity
             onPress={onCancel}
             style={{
-              backgroundColor: '#FF3131',
+              backgroundColor: color,
               paddingHorizontal: 20,
               padding: 5,
               borderRadius: 5,
@@ -1130,23 +1180,19 @@ export default function ChatScreen({route}) {
         </View>
       ) : null}
       <View style={styles.inputContainer}>
-        <TouchableOpacity
-          onPress={handlePresentModalPress}
-          style={styles.imagePickerButton}>
-          <Icon name="add" size={24} color="#FF3131" />
-        </TouchableOpacity>
         <TextInput
           style={styles.input}
           value={message}
           onChangeText={text => setMessage(text)}
           placeholder="Type a message"
           placeholderTextColor={'grey'}
+          multiline
         />
         {sending ? (
           <ActivityIndicator color={'#1a1a1a'} size={'small'} />
         ) : (
           <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
-            <Icon name="send-outline" size={24} color="#FF3131" />
+            <Icon name="send" size={24} color={color} />
           </TouchableOpacity>
         )}
       </View>
@@ -1156,8 +1202,8 @@ export default function ChatScreen({route}) {
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalContainer}>
+          <Text style={styles.modalText}>Delete this message?</Text>
           <View style={styles.modalContent}>
-            <Text style={styles.modalText}>Delete this message?</Text>
             <TouchableOpacity
               onPress={deleteMessage}
               style={styles.deleteButton}>
@@ -1199,7 +1245,7 @@ export default function ChatScreen({route}) {
             <Icon
               name="camera"
               size={20}
-              color="#FF3131"
+              color={color}
               style={{marginLeft: 10}}
             />
             <Text style={{color: 'white', fontSize: 16}}>Camera</Text>
@@ -1216,7 +1262,7 @@ export default function ChatScreen({route}) {
             <Icon
               name="image"
               size={20}
-              color="#FF3131"
+              color={color}
               style={{marginLeft: 10}}
             />
             <Text style={{color: 'white', fontSize: 16}}>Media</Text>
@@ -1238,8 +1284,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   profilePic: {
-    width: 35,
-    height: 35,
+    width: 30,
+    height: 30,
     borderRadius: 17.5,
     marginRight: 10,
   },
@@ -1280,15 +1326,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 10 : 10,
     paddingBottom: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'grey',
     backgroundColor: 'black',
     elevation: 2,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FF3131',
+    color: color,
   },
   loadingContainer: {
     flex: 1,
@@ -1357,9 +1401,9 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? 12 : 8,
     paddingHorizontal: 16,
     backgroundColor: 'black',
-    borderRadius: 24,
+    borderRadius: 6,
     fontSize: 16,
-    color: '#FF3131',
+    color: color,
     backgroundColor: '#1a1a1a',
   },
   imagePickerButton: {
@@ -1378,10 +1422,12 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'black',
-    padding: 24,
     borderRadius: 8,
     width: '80%',
     alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   modalText: {
     fontSize: 18,
@@ -1389,24 +1435,27 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   deleteButton: {
-    backgroundColor: '#FF3131',
+    backgroundColor: color,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    marginBottom: 12,
+    width: '48%',
+    alignItems: 'center',
   },
   deleteButtonText: {
     color: '#fff',
     fontSize: 16,
   },
   cancelButton: {
-    backgroundColor: '#E5E5E5',
+    backgroundColor: '#1a1a1a',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
+    width: '48%',
+    alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#333',
+    color: 'white',
     fontSize: 16,
   },
   videoContainer: {
@@ -1465,6 +1514,7 @@ const styles = StyleSheet.create({
   },
   postShare: {
     width: '100%',
+    padding: 50,
   },
   textMessage: {
     width: '80%',

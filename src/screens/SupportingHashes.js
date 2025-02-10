@@ -154,7 +154,7 @@ export default function SupportingHashes({ route, navigation }) {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={{
-            marginRight: 20, alignItems: 'center', padding: 5, backgroundColor: "#1a1a1a", borderRadius: 8, flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 10
+            alignItems: 'center', padding: 10, backgroundColor: "#1a1a1a", borderRadius: 8, flexDirection: 'row', gap: 10, alignSelf: 'center', marginTop: 10, width: "95%"
           }}
         >
           <Image source={{uri: item.imageUri}} style={{ height: 40, width: 40, borderRadius: 80 }} />

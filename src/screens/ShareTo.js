@@ -4,6 +4,7 @@ import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {SHA256} from 'crypto-js';
 import Icon from 'react-native-vector-icons/Ionicons';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function ShareTo({ route, navigation }) {
   const { post_id, network_id, post_title, post_information, network_name } = route.params;

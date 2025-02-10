@@ -4,6 +4,8 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import FriendUser from './FriendUser';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function Request({ navigation }) {
   const [requestData, setRequestData] = useState([]);
@@ -35,8 +37,8 @@ export default function Request({ navigation }) {
   return (
     <View style={{ flex: 1, backgroundColor: 'black' }}>
       <View style={{ flexDirection: 'row', padding: 10, gap: 15 }}>
-        <Icon name="close" size={28} color="#FF3131" onPress={() => navigation.goBack()} />
-        <Text style={{ color: 'white', fontSize: 20, color: "#FF3131", fontWeight: '600' }}>Requests</Text>
+        <Icon name="close" size={28} color={color} onPress={() => navigation.goBack()} />
+        <Text style={{ color: 'white', fontSize: 20, color: color, fontWeight: '600' }}>Requests</Text>
       </View>
       <FlatList
         data={requestData}

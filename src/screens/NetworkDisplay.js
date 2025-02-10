@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { Text, View, Image, StyleSheet, Pressable } from 'react-native';
+import React, {useEffect, useState} from 'react';
+import {Text, View, Image, StyleSheet, Pressable} from 'react-native';
 import firestore from '@react-native-firebase/firestore';
-import { useNavigation } from '@react-navigation/native';
+import {useNavigation} from '@react-navigation/native';
 import SkeletonPlaceholder from 'react-native-skeleton-placeholder';
+import {SharedElement} from 'react-navigation-shared-element';
 
-export default function NetworkDisplay({ network_id }) {
+export default function NetworkDisplay({network_id, isPicture}) {
   const [networkData, setNetworkData] = useState(null);
   const [adminProfilePic, setAdminProfilePic] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,7 @@ export default function NetworkDisplay({ network_id }) {
     fetchNetworkData();
   }, [network_id]);
 
+  
   if (loading) {
     return (
       <SkeletonPlaceholder backgroundColor="#3A3A3A">
@@ -54,14 +56,42 @@ export default function NetworkDisplay({ network_id }) {
               <View style={styles.skeletonBio} />
             </View>
           </View>
-          <View style={styles.skeletonType} />
         </View>
+      </SkeletonPlaceholder>
+    );
+  }
+
+  if (loading && isPicture) {
+    return (
+      <SkeletonPlaceholder backgroundColor="#3A3A3A" style={{margin: 10}}>
+        <View style={styles.profilePic} />
       </SkeletonPlaceholder>
     );
   }
 
   if (!networkData) {
     return null;
+  }
+
+  if (isPicture) {
+    return (
+      <Pressable
+        style={{alignSelf: 'center', alignItems: 'center'}}
+        onPress={() => {
+          navigation.navigate('Network', {
+            networkId: network_id,
+          });
+        }}>
+        <Image
+          source={{uri: networkData.profile_pic}}
+          style={
+            isPicture
+              ? {height: 38, width: 38, borderRadius: 50}
+              : styles.profilePic
+          }
+        />
+      </Pressable>
+    );
   }
 
   return (
@@ -71,16 +101,33 @@ export default function NetworkDisplay({ network_id }) {
         navigation.navigate('Network', {
           networkId: network_id,
         })
-      }
-    >
+      }>
       <View style={styles.leftContainer}>
-        <Image source={{ uri: networkData.profile_pic }} style={styles.profilePic} />
-        <View style={styles.textContainer}>
-          <Text style={styles.networkName}>{networkData.network_name}</Text>
-          <Text style={styles.networkBio}>{networkData.bio}</Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            width: '90%',
+          }}>
+          <Image
+            source={{uri: networkData.profile_pic}}
+            style={styles.profilePic}
+          />
+          <View style={styles.textContainer}>
+            <Text style={styles.networkName}>{networkData.network_name}</Text>
+            <Text
+              style={styles.networkBio}
+              numberOfLines={1}
+              ellipsizeMode="tail">
+              {networkData.bio}
+            </Text>
+          </View>
         </View>
       </View>
-      <Text style={styles.networkType}>{networkData.network_type}</Text>
+      {!isPicture && (
+        <Text style={styles.networkType}>{networkData.network_type}</Text>
+      )}
     </Pressable>
   );
 }
@@ -93,35 +140,26 @@ const styles = StyleSheet.create({
   },
   container: {
     width: '100%',
-    padding: 16,
+    padding: 10,
     backgroundColor: 'black',
     alignItems: 'center',
-    borderRadius: 3,
-    borderBottomWidth: 0.4,
-    borderColor: '#ccc',
-    shadowColor: '#000',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 2,
   },
   leftContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    justifyContent: 'space-between',
   },
   profilePic: {
-    width: 50,
-    height: 50,
+    width: 40,
+    height: 40,
     borderRadius: 50,
   },
   textContainer: {
-    justifyContent: 'center',
+    justifyContent: 'space-evenly',
+    marginLeft: 10,
   },
   networkName: {
     fontSize: 18,
@@ -129,13 +167,15 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   networkBio: {
-    fontSize: 16,
-    color: 'white',
+    fontSize: 13,
+    color: 'grey',
+    maxWidth: "95%"
   },
   networkType: {
     fontSize: 15,
     color: 'gray',
-    marginRight: 10,
+    right: 10,
+    position: 'absolute',
   },
   skeletonName: {
     width: 120,

@@ -1,24 +1,39 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Text, View, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
+import React, {useEffect, useState, useCallback} from 'react';
+import {
+  Text,
+  View,
+  FlatList,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import Post from './Post';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import color from './color';
+import { SharedElement } from 'react-navigation-shared-element';
 
-export default function PostUsers() {
+export default function PostUsers({id}) {
   const [posts, setPosts] = useState([]);
   const [lastDoc, setLastDoc] = useState(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const user = auth().currentUser;
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const fetchPosts = async (initial = false) => {
-    setLoading(true);
+    if (loading || loadingMore) return;
+
+    if (initial) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
     let query = firestore()
       .collection('Users')
-      .doc(user.uid)
+      .doc(id)
       .collection('Posts')
       .orderBy('createdAt', 'desc')
-      .limit(20);
+      .limit(15);
 
     if (lastDoc && !initial) {
       query = query.startAfter(lastDoc);
@@ -47,79 +62,94 @@ export default function PostUsers() {
     }
 
     setLoading(false);
+    setLoadingMore(false);
   };
 
   useEffect(() => {
     fetchPosts(true);
-  }, [user]);
+  }, [id]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchPosts(true).then(() => setRefreshing(false));
   }, []);
 
-  const handleLoadMore = () => {
-    if (!loading && lastDoc) {
-      fetchPosts();
-    }
-  };
-
-  const isCloseToBottom = ({ layoutMeasurement, contentOffset, contentSize }) => {
-    const paddingToBottom = 20;
+  const renderFooter = () => {
+    if (!loadingMore)
+      return (
+        <View style={{flex: 1, backgroundColor: 'black', height: 300}}></View>
+      );
     return (
-      layoutMeasurement.height + contentOffset.y >=
-      contentSize.height - paddingToBottom
+      <ActivityIndicator
+        size="large"
+        color={color}
+        style={{marginVertical: 20}}
+      />
     );
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'black' }}>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 100 }}
+    <View style={{flex: 1, backgroundColor: 'black'}}>
+      <FlatList
+        data={posts}
+        keyExtractor={item => item.id}
+        renderItem={({item}) => (
+          <SharedElement id={`item.${item.post_id}.post`}>
+            <Post post_id={item.post_id} />
+          </SharedElement>
+        )}
+        ListHeaderComponent={
+          <View
+            style={{backgroundColor: '#1a1a1a', margin: 10, borderRadius: 4}}>
+            <Text
+              style={{
+                color: 'white',
+                fontSize: 25,
+                margin: 10,
+                fontWeight: 'bold',
+              }}>
+              Posts
+            </Text>
+          </View>
+        }
+        ListEmptyComponent={
+          !loading && (
+            <View
+              style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+              <Text
+                style={{
+                  color: 'grey',
+                  fontSize: 18,
+                  alignSelf: 'center',
+                  paddingBottom: 200,
+                  marginTop: 30,
+                }}>
+                No Posts available
+              </Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={['#FF3131']}
+            colors={[color]}
           />
         }
-        onScroll={({ nativeEvent }) => {
-          if (isCloseToBottom(nativeEvent)) {
-            handleLoadMore();
-          }
+        ListFooterComponent={renderFooter}
+        onEndReached={() => {
+          if (lastDoc) fetchPosts(false);
         }}
-        scrollEventThrottle={100} 
-      >
-        <View style={{ backgroundColor: "#1a1a1a", margin: 10, borderRadius: 4 }}>
-          <Text
-            style={{
-              color: 'white',
-              fontSize: 25,
-              margin: 10,
-              fontWeight: 'bold',
-            }}>
-            Posts
-          </Text>
-        </View>
-
-        {posts.length > 0 ? (
-          <>
-            {posts.map(item => (
-              <Post
-                key={item.id}
-                post_id={item.post_id}
-                network_id={item.network_id}
-              />
-            ))}
-            {loading && <ActivityIndicator size="large" color="#FF3131" />}
-          </>
-        ) : (
-          // Show message when there are no posts
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ color: 'white', fontSize: 18, alignSelf: 'center' }}>No posts available</Text>
-          </View>
-        )}
-      </ScrollView>
+        onEndReachedThreshold={0.75}
+        contentContainerStyle={{
+          flex: 1,
+          backgroundColor: 'black',
+          height: '100%',
+        }}
+      />
+      {loading && posts.length === 0 && (
+        <ActivityIndicator size="small" color={color} style={{marginTop: 20}} />
+      )}
     </View>
   );
 }

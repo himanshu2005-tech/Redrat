@@ -1,16 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Text, View, StyleSheet, Pressable, Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, {useState, useEffect, useCallback} from 'react';
+import {Text, View, StyleSheet, Pressable, Image, Modal} from 'react-native';
+import {useNavigation} from '@react-navigation/native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-import { SHA256 } from 'crypto-js';
+import {SHA256} from 'crypto-js';
+import SkeletonPlaceholder from 'react-native-skeleton-placeholder';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
-const UserChat = ({ item }) => {
+const UserChat = ({item, onDeleteChat}) => {
   const navigation = useNavigation();
-  const [userDetails, setUserDetails] = useState({});
-  const [chatRoomInfo, setChatRoomInfo] = useState({});
+  const [userDetails, setUserDetails] = useState(null);
+  const [chatRoomInfo, setChatRoomInfo] = useState(null);
   const [chatRoomId, setChatRoomId] = useState(null);
   const [lastSeen, setLastSeen] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false)
   const currentUserUid = auth().currentUser.uid;
 
   const generateChatRoomId = useCallback(() => {
@@ -33,13 +38,11 @@ const UserChat = ({ item }) => {
           chatRoomDoc => {
             if (chatRoomDoc.exists) {
               setChatRoomInfo(chatRoomDoc.data());
-            } else {
-              console.log('Chat room not found');
             }
           },
           error => {
             console.error('Error fetching chat room info:', error);
-          }
+          },
         );
 
       const unsubscribeLastSeen = firestore()
@@ -51,13 +54,11 @@ const UserChat = ({ item }) => {
           memberDoc => {
             if (memberDoc.exists) {
               setLastSeen(memberDoc.data().lastSeen);
-            } else {
-              console.warn('Last seen document not found');
             }
           },
           error => {
             console.warn('Error fetching last seen:', error);
-          }
+          },
         );
 
       return () => {
@@ -70,14 +71,17 @@ const UserChat = ({ item }) => {
   useEffect(() => {
     const fetchUserDetails = async () => {
       try {
-        const userDoc = await firestore().collection('Users').doc(item.userId).get();
+        const userDoc = await firestore()
+          .collection('Users')
+          .doc(item.userId)
+          .get();
         if (userDoc.exists) {
           setUserDetails(userDoc.data());
-        } else {
-          console.log('User not found');
         }
       } catch (error) {
         console.error('Error fetching user details:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -108,41 +112,97 @@ const UserChat = ({ item }) => {
   };
 
   const isNewMessage = () => {
-    if (!chatRoomInfo.lastMessageTimestamp || !lastSeen) return false;
+    if (!chatRoomInfo?.lastMessageTimestamp || !lastSeen) return false;
     const lastSeenTime = lastSeen.seconds;
     const lastMessageTime = chatRoomInfo.lastMessageTimestamp.seconds;
     return lastMessageTime > lastSeenTime;
   };
 
-  return (
-    <Pressable
-      style={styles.chatItem}
-      onPress={() => navigation.navigate('Chat', { id: item.userId })}
-    >
-      <View style={styles.chatDetails}>
-        <View style={styles.detailsContainer}>
-          <Image
-            source={{ uri: userDetails.profile_pic }}
-            style={styles.profilePic}
-          />
-          <View style={styles.textContainer}>
-            <Text style={[styles.chatText, isNewMessage() && styles.boldText]}>
-              {userDetails.name || 'Unknown User'}
-            </Text>
-            <Text style={[styles.chatTextLast, isNewMessage() && styles.boldText]} numberOfLines={1} ellipsizeMode="tail">
-              {chatRoomInfo.lastMessageText || 'No message here'}
-            </Text>
+  if (loading) {
+    return (
+      <SkeletonPlaceholder>
+        <View style={styles.chatItem}>
+          <View style={styles.detailsContainer}>
+            <View style={styles.profilePicSkeleton} />
+            <View style={styles.textSkeleton}>
+              <View style={styles.nameSkeleton} />
+              <View style={styles.messageSkeleton} />
+            </View>
           </View>
         </View>
-        <View style={styles.timestampContainer}>
-          {chatRoomInfo.lastMessageTimestamp && (
-            <Text style={styles.timestamp}>
-              {timeAgo(chatRoomInfo.lastMessageTimestamp)}
-            </Text>
-          )}
+      </SkeletonPlaceholder>
+    );
+  }
+
+  if(!userDetails){
+    return null
+  }
+  return (
+    <View>
+      <Pressable
+        style={styles.chatItem}
+        onPress={() => navigation.navigate('Chat', {id: item.userId})}>
+        <View style={styles.chatDetails}>
+          <View style={styles.detailsContainer}>
+            <Image
+              source={{uri: userDetails?.profile_pic}}
+              style={styles.profilePic}
+            />
+            <View style={styles.textContainer}>
+              <Text
+                style={[styles.chatText, isNewMessage() && styles.boldText]}>
+                {userDetails?.name || 'Unknown User'}
+              </Text>
+              <Text
+                style={[styles.chatTextLast, isNewMessage() && styles.boldText]}
+                numberOfLines={1}
+                ellipsizeMode="tail">
+                {chatRoomInfo?.lastMessageText || 'No message here'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.timestampContainer}>
+            {chatRoomInfo?.lastMessageTimestamp && (
+              <Text style={styles.timestamp}>
+                {timeAgo(chatRoomInfo.lastMessageTimestamp)}
+              </Text>
+            )}
+          </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+      <Modal
+        transparent={true}
+        visible={showModal}
+        animationType="slide"
+        onRequestClose={() => showModal(false)}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}>
+          <View
+            style={{
+              backgroundColor: 'black',
+              padding: 20,
+              borderRadius: 10,
+              width: '90%',
+              alignItems: 'center',
+            }}>
+              <Text style={{color: 'white'}}>Remove Chat from feed?</Text>
+              <View style={{width: "100%", flexDirection: 'row', alignItems: 'center',justifyContent: 'space-between', marginTop: 5}}>
+                <Pressable style={{width: "45%", backgroundColor: color, padding: 10, borderRadius: 5, alignItems: 'center'}} onPress={onDeleteChat}>
+                  <Text style={{color: 'white'}}>Delete</Text>
+                </Pressable>
+                <Pressable style={{width: "45%", backgroundColor: '#1a1a1a', padding: 10, borderRadius: 5, alignItems: 'center'}} onPress={() => setShowModal(false)}>
+                  <Text style={{color: 'white'}}>Cancel</Text>
+                </Pressable>
+              </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
@@ -152,7 +212,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'black',
     borderRadius: 5,
-    marginBottom: 6
+    marginBottom: 6,
   },
   chatDetails: {
     flexDirection: 'row',
@@ -167,6 +227,29 @@ const styles = StyleSheet.create({
     height: 40,
     width: 40,
     borderRadius: 20,
+  },
+  profilePicSkeleton: {
+    height: 40,
+    width: 40,
+    borderRadius: 20,
+    backgroundColor: '#e1e1e1',
+  },
+  textSkeleton: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  nameSkeleton: {
+    width: '60%',
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: '#e1e1e1',
+    marginBottom: 5,
+  },
+  messageSkeleton: {
+    width: '80%',
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#e1e1e1',
   },
   textContainer: {
     flex: 1,
@@ -193,3 +276,7 @@ const styles = StyleSheet.create({
 });
 
 export default UserChat;
+
+
+
+

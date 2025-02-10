@@ -1,8 +1,26 @@
 /**
  * @format
  */
-import {AppRegistry} from 'react-native';
+import { AppRegistry, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import App from './App';
-import {name as appName} from './app.json';
+import { name as appName } from './app.json';
 
-AppRegistry.registerComponent(appName, () => App);
+const Main = () => (
+  <KeyboardAvoidingView
+    style={styles.container}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
+    <SafeAreaProvider>
+      <App />
+    </SafeAreaProvider>
+  </KeyboardAvoidingView>
+);
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});
+
+AppRegistry.registerComponent(appName, () => Main);

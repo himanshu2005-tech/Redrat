@@ -13,6 +13,9 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
+
 
 export default function PinnedChats({navigation}) {
   const [pinnedChats, setPinnedChats] = useState([]);
@@ -96,11 +99,6 @@ export default function PinnedChats({navigation}) {
           />
           <Text style={styles.chatName}>{userDetails.name || 'User'}</Text>
         </TouchableOpacity>
-        <Pressable
-          style={styles.unpinButton}
-          onPress={() => unpinChat(chatroomid)}>
-          <Text style={{color: 'white'}}>Unpin</Text>
-        </Pressable>
       </View>
     );
   };
@@ -108,7 +106,7 @@ export default function PinnedChats({navigation}) {
   if (loading) {
     return (
       <View style={{backgroundColor: 'black', flex: 1}}>
-      <ActivityIndicator size="large" color="#FF3131" style={styles.loader} />
+      <ActivityIndicator size="large" color={color} style={styles.loader} />
       </View>
     );
   }
@@ -119,7 +117,7 @@ export default function PinnedChats({navigation}) {
         <Icon
           name="chevron-back"
           size={28}
-          color="#FF3131"
+          color={color}
           onPress={() => navigation.goBack()}
         />
         <Text style={styles.title}>Pinned Chats</Text>
@@ -163,9 +161,10 @@ const styles = StyleSheet.create({
   chatItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
+    padding: 8,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 3,
+    marginTop: 5
   },
   chatItem: {
     flexDirection: 'row',
@@ -185,7 +184,7 @@ const styles = StyleSheet.create({
   },
   unpinButton: {
     padding: 8,
-    borderColor: '#FF3131',
+    borderColor: color,
     borderWidth: 0.5,
     borderRadius: 5,
   },
@@ -201,9 +200,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    color: '#FF3131',
+    color: color,
     marginLeft: 10,
     textAlign: 'center',
     letterSpacing: 1,
   },
-});
+})

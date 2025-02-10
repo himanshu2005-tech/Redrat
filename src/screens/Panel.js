@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,336 +6,198 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  Modal,
-  ActivityIndicator,
-  Image,
-  Pressable,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import Icon from 'react-native-vector-icons/Ionicons';
+import Bluing from '../texting/Bluing';
+import PinnedAnnouncement from './PinnedAnnoucement';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
-const Header = ({navigation, title, onPressIdCard}) => (
+const Header = ({navigation, title}) => (
   <View style={styles.header}>
-    <View style={styles.headerContent}>
+    <View style={{flexDirection: 'row', alignItems: 'center'}}>
       <Icon
         name="chevron-back"
         size={28}
-        color="#FF3131"
+        color={color}
         onPress={() => navigation.goBack()}
       />
-      <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">{title}</Text>
+      <Text style={{textAlign: 'center', color: 'white', fontSize: 18}} numberOfLines={1} ellipsizeMode="tail">
+        {title}
+      </Text>
     </View>
   </View>
 );
 
+const formatTimestamp = timestamp => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp.seconds * 1000);
+  const options = {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  };
+  return new Intl.DateTimeFormat('en-US', options).format(date);
+};
+
 const Panel = ({navigation, route}) => {
-  const {network_id, network_name} = route.params;
+  const {network_id, panel_name, admin} = route.params;
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [modalVisible, setModalVisible] = useState(false);
-  const [userDetailsMap, setUserDetailsMap] = useState({});
-  const [recording, setRecording] = useState(false);
-  const [audioPath, setAudioPath] = useState('');
+  const [lastVisible, setLastVisible] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [networkDetails, setNetworkDetails] = useState(null);
   const currentUserId = auth().currentUser.uid;
+  const PAGE_SIZE = 10;
 
-  useEffect(() => {
-    const unsubscribe = firestore()
-      .collection('Network')
-      .doc(network_id)
-      .collection('Panel')
-      .orderBy('timestamp', 'desc')
-      .onSnapshot(querySnapshot => {
-        const msgs = querySnapshot.docs.map(doc => {
-          return {id: doc.id, ...doc.data()};
-        });
-        setMessages(msgs);
-      });
+  const fetchMessages = async (initial = false) => {
+    if (loading) return;
 
-    return () => unsubscribe();
-  }, [network_id]);
+    setLoading(true);
+    try {
+      const query = firestore()
+        .collection('Network')
+        .doc(network_id)
+        .collection('Panel')
+        .orderBy('timestamp', 'desc')
+        .limit(PAGE_SIZE);
 
-  useEffect(() => {
-    const fetchUserDetails = async userId => {
-      const userDoc = await firestore().collection('Users').doc(userId).get();
-      if (userDoc.exists) {
-        return userDoc.data();
+      const snapshot = initial
+        ? await query.get()
+        : await query.startAfter(lastVisible).get();
+
+      if (!snapshot.empty) {
+        const newMessages = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        setMessages(prev =>
+          initial ? newMessages : [...prev, ...newMessages],
+        );
+        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
       }
-      return null;
-    };
-
-    const fetchAllUserDetails = async () => {
-      const userIds = [...new Set(messages.map(message => message.senderId))];
-      const userDetails = await Promise.all(userIds.map(fetchUserDetails));
-      const userDetailsMap = userIds.reduce((acc, userId, index) => {
-        acc[userId] = userDetails[index];
-        return acc;
-      }, {});
-      setUserDetailsMap(userDetailsMap);
-    };
-
-    fetchAllUserDetails();
-  }, [messages]);
-
-  const sendMessage = async () => {
-    if (newMessage.trim() === '' && audioPath === '') {
-      return;
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    } finally{
+      console.log("Loaidnng ")
     }
-
-    let messageData = {
-      senderId: currentUserId,
-      timestamp: firestore.FieldValue.serverTimestamp(),
-    };
-
-    if (newMessage.trim() !== '') {
-      messageData.message = newMessage;
-    }
-
-    await firestore()
-      .collection('Network')
-      .doc(network_id)
-      .collection('Panel')
-      .add(messageData);
-
-    setNewMessage('');
-    setAudioPath('');
+    setLoading(false);
   };
 
-  const renderItem = ({item}) => {
-    const userDetails = userDetailsMap[item.senderId];
+  useEffect(() => {
+    fetchMessages(true);
+  }, [network_id]);
 
-    if (!userDetails) {
-      return null;
+  const loadMoreMessages = () => {
+    if (!loading && lastVisible) {
+      fetchMessages();
     }
+  };
 
-    const isCurrentUser = item.senderId === currentUserId;
+  const sendMessage = async () => {
+    if (newMessage.trim() === '') return;
 
-    const renderMessageContent = () => {
-        return (
-          <View
-            style={[
-              styles.messageContent,
-              isCurrentUser
-                ? styles.currentUserMessageContent
-                : styles.otherUserMessageContent,
-            ]}>
-            {!isCurrentUser && (
-              <Pressable onPress={() => navigation.navigate("UserProfile", {id: item.senderId})}>
-              <Text style={{color: 'white', fontWeight: 'bold'}}>
-                {userDetails.name}
-              </Text>
-              </Pressable>
-            )}
-            <Text
-              style={
-                isCurrentUser ? styles.currentUserText : styles.otherUserText
-              }>
-              {item.message}
-            </Text>
-          </View>
-        );
-    };
+    try {
+      await firestore()
+        .collection('Network')
+        .doc(network_id)
+        .collection('Panel')
+        .add({
+          senderId: currentUserId,
+          timestamp: firestore.FieldValue.serverTimestamp(),
+          message: newMessage,
+        });
 
-    return (
-      <View
-        style={[
-          styles.messageContainer,
-          isCurrentUser ? styles.currentUserMessage : styles.otherUserMessage,
-        ]}>
-        {!isCurrentUser && (
-          <Pressable onPress={() => navigation.navigate("UserProfile", {id: item.senderId})}>
-          <Image
-            source={{uri: userDetails.profile_pic}}
-            style={styles.profileImage}
-          />
-          </Pressable>
-        )}
-        {renderMessageContent()}
-      </View>
-    );
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      navigation.goBack()
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Header
-        navigation={navigation}
-        title={`${network_name}'s Panel`}
-        onPressIdCard={() => setModalVisible(true)}
-      />
+      <Header navigation={navigation} title={panel_name} />
+      
       <FlatList
         data={messages}
-        renderItem={renderItem}
+        renderItem={({item}) => (
+          <PinnedAnnouncement network_id={network_id} announcement_id={item.id} />
+        )}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.messageList}
+        ListFooterComponent={
+          loading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading...</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreMessages}>
+              <Text style={styles.loadMoreText}>Load More</Text>
+            </TouchableOpacity>
+          )
+        }
       />
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message"
-          value={newMessage}
-          onChangeText={setNewMessage}
-          placeholderTextColor={"#ccc"}
-        />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-          <Text style={styles.sendButtonText}>Send</Text>
-        </TouchableOpacity>
-      </View>
+      
+      {currentUserId === admin && (
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type an announcement"
+            placeholderTextColor="#ccc"
+            value={newMessage}
+            onChangeText={setNewMessage}
+            multiline
+          />
+          <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+            <Icon name="send-outline" size={25} color="white" />
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'black',
-  },
-  header: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 100,
-    backgroundColor: 'black',
-    width: '100%',
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 0.2,
-    borderColor: '#ccc',
-  },
-  currentUserText: {
-    color: '#FF3131',
-  },
-  otherUserText: {
-    color: 'white',
-  },
-  headerContent: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  title: {
-    flex: 1,
-    fontSize: 24,
-    color: 'white',
-    marginLeft: 10,
-    textAlign: 'center',
-    maxWidth: "90%"
-  },
-  messageList: {
+  container: {flex: 1, backgroundColor: 'black'},
+  header: {backgroundColor: 'black', padding: 10},
+  announcementContainer: {
+    backgroundColor: '#1a1a1a',
+    margin: 10,
     padding: 10,
+    borderRadius: 5,
   },
-  messageContainer: {
-    flexDirection: 'row',
-    marginBottom: 10,
-    alignItems: 'center',
+  messageText: {color: 'white', fontSize: 16},
+  timestamp: {color: '#ccc', fontSize: 12, textAlign: 'right'},
+  loadMoreButton: {
+    backgroundColor: color,
+    padding: 5,
+    borderRadius: 5,
+    margin: 10,
   },
-  currentUserMessage: {
-    justifyContent: 'flex-end',
-  },
-  otherUserMessage: {
-    justifyContent: 'flex-start',
-  },
-  profileImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
-  },
-  messageContent: {
-    maxWidth: '70%',
-    padding: 10,
-    borderRadius: 10,
-  },
-  currentUserMessageContent: {
-    backgroundColor: '#FFEDED',
-    marginLeft: 10,
-    alignItems: 'flex-end',
-  },
-  otherUserMessageContent: {
-    backgroundColor: '#FF3131',
-    marginRight: 10,
-  },
-  senderName: {
-    fontWeight: 'bold',
-    color: '#FF3131',
-    marginBottom: 5,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 10,
-    color: "white",
-  },
+  loadMoreText: {color: 'white', textAlign: 'center'},
+  inputContainer: {flexDirection: 'row', padding: 10},
   input: {
     flex: 1,
     backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    color: "#ccc",
-  },
-  sendButton: {
-    backgroundColor: '#FF3131',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    justifyContent: 'center',
-    marginLeft: 10,
-  },
-  sendButtonText: {
     color: 'white',
-    fontWeight: 'bold',
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    width: '80%',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#FF3131',
-  },
-  modalButton: {
     padding: 10,
     borderRadius: 5,
-    marginTop: 20,
-    width: '50%',
-    alignItems: 'center',
-    backgroundColor: '#FF3131',
   },
-  modalButtonText: {
-    fontSize: 16,
-    color: 'white',
+  sendButton: {
+    marginLeft: 10,
+    backgroundColor: color,
+    padding: 10,
+    borderRadius: 5,
   },
-  voiceMessageContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  recordButton: {
-    backgroundColor: '#FF3131',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  recordButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  audioMessage: {
-    backgroundColor: '#007bff', // customize background color for audio messages
-  },
-  
+  loadingText: {color: 'white', textAlign: 'center', padding: 10},
+  loadingContainer: {padding: 10, alignItems: 'center'},
 });
 
 export default Panel;

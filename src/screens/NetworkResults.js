@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Text, View, FlatList, ActivityIndicator, StyleSheet, Image, RefreshControl, Pressable } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import SkeletonPlaceholder from 'react-native-skeleton-placeholder';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function NetworkResults({ route, navigation }) {
   const { target } = route.params;
@@ -20,7 +21,7 @@ export default function NetworkResults({ route, navigation }) {
         .collection('Network')
         .where('network_name', '>=', target)
         .where('network_name', '<=', target + '\uf8ff') 
-        .limit(200)
+        .limit(20)
         .get();
 
       const fetchedNetworks = networksSnapshot.docs.map(doc => ({
@@ -47,8 +48,9 @@ export default function NetworkResults({ route, navigation }) {
       <Image source={{ uri: item.profile_pic }} style={styles.profilePic} />
       <View>
         <Text style={styles.networkName}>{item.network_name}</Text>
-        <Text style={styles.networkType}>{item.network_type}</Text>
+        <Text style={styles.networkType} numberOfLines={1}>{item.bio}</Text>
       </View>
+      <Text style={{position:'absolute', right: 10, fontSize: 14, color: 'grey'}}>{item.network_type}</Text>
     </Pressable>
   );
 
@@ -67,11 +69,7 @@ export default function NetworkResults({ route, navigation }) {
   return (
     <View style={styles.container}>
       {loading ? (
-        <>
-          {renderSkeleton()}
-          {renderSkeleton()}
-          {renderSkeleton()}
-        </>
+        null
       ) : (
         <FlatList
           data={networks}
@@ -123,12 +121,12 @@ const styles = StyleSheet.create({
   networkType: {
     fontSize: 14,
     color: 'grey',
+    maxWidth: "85%"
   },
   noResultsText: {
     color: '#555555',
     fontSize: 18,
     alignSelf: 'center',
-    marginTop: 20,
   },
   skeletonLine: {
     width: 120,

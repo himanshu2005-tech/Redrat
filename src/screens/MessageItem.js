@@ -1,6 +1,8 @@
 import React, {useState, useEffect} from 'react';
 import {View, Text, Image, StyleSheet} from 'react-native';
 import firestore from '@react-native-firebase/firestore';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 const MessageItem = ({senderId, message}) => {
   const [user, setUser] = useState(null);
@@ -42,7 +44,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontWeight: 'bold',
-    color: '#FF3131',
+    color: color,
   },
   messageText: {
     color: '#000',

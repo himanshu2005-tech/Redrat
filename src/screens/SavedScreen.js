@@ -1,122 +1,167 @@
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Text,
-  View,
   StyleSheet,
+  View,
+  Text,
   FlatList,
-  Pressable,
   ActivityIndicator,
-  RefreshControl,
+  Alert,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-import Post from './Post';
-import { SharedElement } from 'react-navigation-shared-element';
+import Icon from 'react-native-vector-icons/Ionicons';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
-const SavedScreen = ({navigation}) => {
-  const [savedPosts, setSavedPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+const Post = React.lazy(() => import('./Post'));
 
-  useEffect(() => {
-    const unsubscribe = firestore()
-      .collection('Users')
-      .doc(auth().currentUser.uid)
-      .collection('saved')
-      .orderBy('createdAt', 'desc')
-      .onSnapshot(
-        snapshot => {
-          const posts = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
+export default function SavedScreen({ navigation }) {
+  const [likedPosts, setLikedPosts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastVisible, setLastVisible] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
 
-          setSavedPosts(posts);
-          setLoading(false);
-        },
-        error => {
-          console.error('Error fetching liked posts:', error);
-          setLoading(false);
-        },
-      );
+  const fetchLikedPosts = async (loadMore = false) => {
+    if (loadMore && !hasMore) return;
 
-    return () => unsubscribe();
-  }, []);
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchSavedPosts();
+    loadMore ? setLoadingMore(true) : setLoading(true);
+
+    try {
+      const currentUser = auth().currentUser.uid;
+      let postsRef = firestore()
+        .collection('Users')
+        .doc(currentUser)
+        .collection('Saves')
+        .orderBy('savedAt', 'desc')
+        .limit(5);
+
+      if (loadMore && lastVisible) {
+        postsRef = postsRef.startAfter(lastVisible);
+      }
+
+      const snapshot = await postsRef.get();
+      if (!snapshot.empty) {
+        const fetchedPosts = snapshot.docs.map(doc => ({
+          id: doc.id,
+        }));
+
+        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+        setLikedPosts(prev =>
+          loadMore ? [...prev, ...fetchedPosts] : fetchedPosts,
+        );
+      } else {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error('Error fetching liked posts:', error);
+    } finally {
+      loadMore ? setLoadingMore(false) : setLoading(false);
+    }
   };
 
-  const renderItem = ({ item }) => (
-    <SharedElement id={`post.${item.post_id}`}>
-      <Post network_id={item.network_id} post_id={item.post_id} />
-    </SharedElement>
+  useEffect(() => {
+    fetchLikedPosts();
+  }, []);
+
+  const handleLoadMore = () => {
+    if (!loadingMore && hasMore) {
+      setLoadingMore(true);
+      fetchLikedPosts(true);
+    }
+  };
+
+  const renderFooter = () => {
+    if (loadingMore) {
+      return <ActivityIndicator size="small" color={color} />;
+    }
+    if (!hasMore) {
+      return (
+        <View style={styles.footerContainer}>
+          <Text style={styles.footerText}>No more saved posts</Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <Icon
+        name={'chevron-back'}
+        size={25}
+        color={color}
+        onPress={() => navigation.goBack()}
+      />
+      <Text style={styles.headerText}>Saved Posts</Text>
+    </View>
   );
 
-  if (loading) {
+  if (loading && !loadingMore) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF3131" />
+        <ActivityIndicator size="large" color={color} />
       </View>
     );
   }
 
-  const renderFooter = () => {
-    return (
-      <View
-        style={{height: 100, alignItems: 'center', justifyContent: 'center'}}>
-        <Text style={{color: 'black'}}>All Saved Posts have been viewed</Text>
-      </View>
-    );
-  };
   return (
-    <View style={{flex: 1, backgroundColor: 'black'}}>
-      <View style={styles.header}>
-        <Icon
-          name="chevron-back"
-          size={28}
-          color="#FF3131"
-          onPress={() => navigation.goBack()}
-        />
-        <Text style={styles.title}>Saved</Text>
-      </View>
+    <View style={styles.container}>
       <FlatList
-        data={savedPosts}
-        renderItem={renderItem}
-        keyExtractor={item => item.id}
-        contentContainerStyle={{paddingHorizontal: 15}}
+        data={likedPosts}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <SharedElement id={`item.${item.id}.post`}>
+          <React.Suspense fallback={<ActivityIndicator color={color} />}>
+            <Post post_id={item.id} />
+          </React.Suspense>
+          </SharedElement>
+        )}
+        ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
+        contentContainerStyle={styles.flatListContent}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0} 
+        scrollEventThrottle={16}
       />
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 15,
-    paddingBottom: 10,
-    paddingHorizontal: 15,
-    borderBottomWidth: 0.3,
-    borderColor: '#ccc',
-  },
-  title: {
-    flex: 1,
-    fontSize: 24,
-    color: '#FF3131',
-    marginLeft: 10,
-    textAlign: 'center',
-    letterSpacing: 1,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'white',
+    backgroundColor: 'black'
+  },
+  container: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  flatListContent: {
+    flexGrow: 1,
+  },
+  headerContainer: {
+    padding: 10,
+    alignItems: 'center',
+    flexDirection: 'row',
+    height: 60, 
+  },
+  headerText: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: 10,
+  },
+  footerContainer: {
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerText: {
+    color: 'white',
   },
 });
 
-export default SavedScreen;
+

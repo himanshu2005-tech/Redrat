@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Text, View, Image, Pressable, ActivityIndicator } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function User({ id }) {
   const [pic, setPic] = useState();
   const [name, setName] = useState();
-  const [loading, setLoading] = useState(true); // State to handle loading
+  const [loading, setLoading] = useState(true); 
 
   const navigation = useNavigation();
 
@@ -27,7 +29,7 @@ export default function User({ id }) {
   }, []);
 
   if (loading) {
-    return <ActivityIndicator size="small" color="white" />;
+    return <ActivityIndicator size="small" color={color} />;
   }
 
   return (

@@ -14,7 +14,7 @@
       },
       "oauth_client": [
         {
-          "client_id": "452965554229-lgkhndnkg9lasehd11mndgmi7l869ngj.apps.googleusercontent.com",
+          "client_id": "452965554229-jm5sieqjhkkjvctnj5lu0tn7qc034h5l.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.redrat",
@@ -22,20 +22,20 @@
           }
         },
         {
-          "client_id": "452965554229-fp2jiiilsdsu27441oe0phu7u4isg198.apps.googleusercontent.com",
+          "client_id": "452965554229-8o4d4arrm1d35arvoab0rj0ruj1gs446.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyABd0FGBmHqNFhU4MbqNBIPcl-t2QdyUNQ"
+          "current_key": "AIzaSyAIzB3dsRvzwaqumEtenttMeT9W8AvM7w4"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "452965554229-fp2jiiilsdsu27441oe0phu7u4isg198.apps.googleusercontent.com",
+              "client_id": "452965554229-8o4d4arrm1d35arvoab0rj0ruj1gs446.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

@@ -2,6 +2,8 @@ import React from 'react';
 import {View, FlatList, Image, StyleSheet, Pressable, Text} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 const ShowAllImagesScreen = ({route}) => {
   const navigation = useNavigation();
@@ -16,7 +18,6 @@ const ShowAllImagesScreen = ({route}) => {
     </Pressable>
   );
 
-  // Check if images is defined and is an array
   if (!images || !Array.isArray(images) || images.length === 0) {
     return (
       <View style={styles.container}>
@@ -27,17 +28,15 @@ const ShowAllImagesScreen = ({route}) => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Icon
           name="chevron-back"
           size={28}
-          color="#FF3131"
+          color={color}
           onPress={() => navigation.goBack()}
         />
       </View>
 
-      {/* FlatList for images */}
       <FlatList
         data={images.map((url, index) => ({url, index}))}
         renderItem={renderItem}
@@ -66,7 +65,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    aspectRatio: 1, // Square aspect ratio
+    aspectRatio: 1, 
     marginBottom: 8,
   },
 });

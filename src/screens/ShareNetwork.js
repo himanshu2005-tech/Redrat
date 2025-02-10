@@ -1,169 +1,223 @@
-import React, { useState, useEffect } from 'react';
-import { Text, View, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, {useState, useEffect, Suspense} from 'react';
+import {
+  Text,
+  View,
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  TouchableOpacity,
+} from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import {useRoute} from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import {SHA256} from 'crypto-js';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
-export default function ShareNetwork({ route, navigation, network_id, network_name }) {
-  const [chats, setChats] = useState([]);
-  const [sending, setSending] = useState({});
+const Post = React.lazy(() => import('./Post'));
+
+export default function ShareNetwork({navigation}) {
+  const [savedPosts, setSavedPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lastVisible, setLastVisible] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [sortingOrder, setSortingOrder] = useState('ASC');
+  const [showModal, setShowModal] = useState(false);
+
+  const route = useRoute();
+  const {network_id, network_name} = route.params;
 
   useEffect(() => {
-    const getChats = async () => {
-      try {
-        const unsubscribe = firestore()
-          .collection('Users')
-          .doc(auth().currentUser.uid)
-          .collection('ChatRooms')
-          .onSnapshot(async (snapshot) => {
-            const chatDataPromises = snapshot.docs.map(async (doc) => {
-              const chatData = doc.data();
-              const userDoc = await firestore()
-                .collection('Users')
-                .doc(chatData.userId)
-                .get();
-              return {
-                id: doc.id,
-                data: chatData,
-                user: userDoc.exists ? userDoc.data() : null,
-              };
-            });
-            const chatData = await Promise.all(chatDataPromises);
-            setChats(chatData);
-            console.log(chatData);
-          });
-        return () => unsubscribe();
-      } catch (error) {
-        console.warn(error);
-      }
-    };
+    fetchSavedPosts();
+  }, [network_id, sortingOrder]);
 
-    getChats();
-  }, []);
+  const fetchSavedPosts = async (loadMore = false) => {
+    if (loadMore) setLoadingMore(true);
+    else setLoading(true);
 
-  const handleSend = async (chatId, userId) => {
-    setSending((prev) => ({ ...prev, [chatId]: 'sending' }));
     try {
-      await firestore()
-        .collection('ChatRooms')
-        .doc(chatId)
-        .collection('Messages')
-        .add({
-          network_id,
-          network_name,
-          type: "network",
-          createdAt: firestore.FieldValue.serverTimestamp(),
-          senderId: auth().currentUser.uid
-        });
-      setSending((prev) => ({ ...prev, [chatId]: 'sent' }));
-      const sortedUids = [userId, auth().currentUser.uid].sort();
-      const concatenatedIds = sortedUids.join('');
-      const generatedHash = SHA256(concatenatedIds).toString();
+      let query = firestore()
+        .collection('Users')
+        .doc(auth().currentUser.uid)
+        .collection('Saves')
+        .where('network_id', '==', network_id);
+      if (sortingOrder === 'ASC') {
+        query = query.orderBy('savedAt');
+      } else {
+        query = query.orderBy('savedAt', 'desc');
+      }
+      query = query.limit(10);
 
-      const chatroomDocRef = firestore().collection('ChatRooms').doc(chatId);
+      if (loadMore && lastVisible) {
+        query = query.startAfter(lastVisible);
+      }
 
-      await firestore()
-            .collection('Users')
-            .doc(auth().currentUser.uid)
-            .collection('ChatRooms')
-            .doc(chatId)
-            .update({
-                lastMessageText: "Network shared",
-                gaingOrderTimeStamp: firestore.FieldValue.serverTimestamp()
-            });
-        await firestore()
-            .collection('Users')
-            .doc(userId)
-            .collection('ChatRooms')
-            .doc(generatedHash)
-            .update({
-                lastMessageText: "Network shared",
-                gaingOrderTimeStamp: firestore.FieldValue.serverTimestamp()
-            });
+      const snapshot = await query.get();
+      const posts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
-        await chatroomDocRef.set({
-            lastMessageText: "Network shared",
-            lastMessageTimestamp: firestore.FieldValue.serverTimestamp(),
-        });
-      console.log('Post shared successfully');
+      if (loadMore) {
+        setSavedPosts(prevPosts => [...prevPosts, ...posts]);
+      } else {
+        setSavedPosts(posts);
+      }
+
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
     } catch (error) {
-      setSending((prev) => ({ ...prev, [chatId]: 'error' }));
-      console.warn('Error sharing post:', error);
+      console.warn('Error fetching saved posts:', error?.message || error);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
+  const loadMorePosts = () => {
+    if (!loadingMore && lastVisible) {
+      fetchSavedPosts(true);
+    }
+  };
+
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return <ActivityIndicator size="small" color={color} />;
+  };
+
   return (
-    <View style={{ backgroundColor: 'black', flex: 1 }}>
+    <View style={{backgroundColor: 'black', flex: 1}}>
       <View
         style={{
           backgroundColor: 'black',
           padding: 15,
           borderBottomWidth: 0.7,
-          borderColor: 'grey',
-          flexDirection:'row',
-          gap:20
-        }}
-      >       
-      <Text
-          style={{
-            color: '#FF3131',
-            fontSize: 18,
-            fontWeight: 'bold',
-            textAlign: 'center',
-          }}
-        >
-          Share network to
-        </Text>
-      </View>
-      {chats.map((chat) => (
-        <View
-          key={chat.id}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            borderBottomWidth: 1,
-            borderBottomColor: '#ccc',
-            justifyContent: 'space-between',
-            padding: 10,
-          }}
-        >
-          {chat.user && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-              <Image
-                source={{ uri: chat.user.profile_pic }}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  marginRight: 10,
-                }}
-              />
-              <Text style={{ fontSize: 18, color: 'white', flex: 1 }}>
-                {chat.user.name}
-              </Text>
-            </View>
-          )}
-          <TouchableOpacity
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 3}}>
+          <Icon
+            name="chevron-back"
+            size={28}
+            color={color}
+            onPress={() => navigation.goBack()}
+          />
+          <Text
             style={{
-              backgroundColor: sending[chat.id] === 'sent' ? 'black' : '#FF3131',
-              paddingHorizontal: 10,
-              borderRadius: 5,
-              paddingVertical: 3,
-            }}
-            onPress={() => handleSend(chat.id, chat.data.userId)}
-            disabled={sending[chat.id] === 'sending' || sending[chat.id] === 'sent'}
-          >
-            {sending[chat.id] === 'sending' ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={{ color: sending[chat.id] === 'sent' ? '#FF3131' : 'white' }}>
-                {sending[chat.id] === 'sent' ? 'Sent' : 'Send'}
-              </Text>
-            )}
-          </TouchableOpacity>
+              color: color,
+              fontSize: 20,
+              textAlign: 'left',
+              fontWeight: 'bold',
+            }}>
+            {network_name}
+          </Text>
         </View>
-      ))}
+        <TouchableOpacity
+          style={{flexDirection: 'row', alignItems: 'center', gap: 2}}
+          onPress={() => setShowModal(true)}>
+          <Text style={{color: 'grey', fontSize: 15}}>
+            {sortingOrder === 'ASC' ? 'Old to New' : 'New to Old'}
+          </Text>
+          <Icon name={'chevron-down'} color="grey" size={20} />
+        </TouchableOpacity>
+      </View>
+      {loading ? (
+        <ActivityIndicator size="small" color={color} />
+      ) : savedPosts.length === 0 ? (
+        <Text style={{color: 'white', textAlign: 'center', marginTop: 20}}>
+          No saved posts found.
+        </Text>
+      ) : (
+        <FlatList
+          data={savedPosts}
+          keyExtractor={item => item.id}
+          renderItem={({item}) => (
+            <SharedElement id={`item.${item.post_id}.post`}>
+            <Suspense fallback={null}>
+              <Post post_id={item.post_id} />
+            </Suspense>
+            </SharedElement>
+          )}
+          onEndReached={loadMorePosts}
+          onEndReachedThreshold={0}
+          ListFooterComponent={renderFooter}
+        />
+      )}
+      <Modal
+        transparent={true}
+        visible={showModal}
+        animationType="fade"
+        onRequestClose={() => setShowModal(false)}>
+        <Pressable
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}
+          onPress={() => setShowModal(false)}>
+          <View
+            style={{
+              backgroundColor: 'black',
+              padding: 20,
+              borderRadius: 10,
+              width: '90%',
+              alignItems: 'center',
+            }}>
+            <Text style={{color: 'white', fontSize: 16}}>
+              Select Sorting Option
+            </Text>
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                marginTop: 20,
+              }}
+              onPress={() => {
+                setShowModal(false);
+                setSortingOrder('ASC');
+              }}>
+              <Icon
+                name={
+                  sortingOrder === 'ASC'
+                    ? 'radio-button-on'
+                    : 'radio-button-off'
+                }
+                color="white"
+                size={30}
+              />
+              <Text style={{color: 'white'}}>Old to New</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                marginTop: 20,
+              }}
+              onPress={() => {
+                setShowModal(false);
+                setSortingOrder('DESC');
+              }}>
+              <Icon
+                name={
+                  sortingOrder === 'DESC'
+                    ? 'radio-button-on'
+                    : 'radio-button-off'
+                }
+                color="white"
+                size={30}
+              />
+              <Text style={{color: 'white'}}>New to Old</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
+

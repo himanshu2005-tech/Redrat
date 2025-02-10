@@ -1,17 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { Text, View, FlatList, ActivityIndicator, StyleSheet, Image, RefreshControl, Pressable } from 'react-native';
+import {
+  Text,
+  View,
+  FlatList,
+  ActivityIndicator,
+  StyleSheet,
+  Image,
+  RefreshControl,
+  Pressable,
+} from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import SkeletonPlaceholder from 'react-native-skeleton-placeholder';
+import {SharedElement} from 'react-navigation-shared-element';
 
 export default function UserResults({ route, navigation }) {
-  const { target } = route.params;
+  const { target, blockedUsers = [], blockedBy = [] } = route.params; 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchUsers();
-  }, [target]);
+  }, [target, blockedUsers]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -19,18 +29,22 @@ export default function UserResults({ route, navigation }) {
       const usersSnapshot = await firestore()
         .collection('Users')
         .where('name', '>=', target)
-        .where('name', '<=', target + '\uf8ff')
-        .limit(200)
+        .where('name', '<=', `${target}\uf8ff`)
+        .limit(20)
         .get();
 
-      const fetchedUsers = usersSnapshot.docs.map(doc => ({
+      const fetchedUsers = usersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
 
-      setUsers(fetchedUsers);
+      const filteredUsers = fetchedUsers.filter(
+        (user) => !blockedUsers.includes(user.id) && !blockedBy.includes(user.id)
+      );
+      setLoading(false);
+      setUsers(filteredUsers);
     } catch (error) {
-      console.error('Error fetching users: ', error);
+      console.error('Error fetching users:', error);
     } finally {
       setLoading(false);
     }
@@ -43,17 +57,22 @@ export default function UserResults({ route, navigation }) {
   };
 
   const renderUser = ({ item }) => (
-    <Pressable style={styles.userContainer} onPress={() => navigation.navigate('UserProfile', { id: item.id })}>
+    <Pressable
+      style={styles.userContainer}
+      onPress={() => navigation.navigate('UserProfile', { id: item.id })}
+    >
       {item.profile_pic ? (
         <Image source={{ uri: item.profile_pic }} style={styles.profilePic} />
       ) : (
         <View style={styles.profilePicPlaceholder}>
-          <Text style={styles.profilePicPlaceholderText}>{item.name[0]}</Text>
+          <Text style={styles.profilePicPlaceholderText}>
+            {item.name[0]?.toUpperCase() || 'U'}
+          </Text>
         </View>
       )}
       <View style={styles.userInfo}>
         <Text style={styles.userName}>{item.name}</Text>
-        <Text style={styles.userEmail}>{item.email}</Text>
+        <Text style={styles.userEmail}>{item.email || 'No email provided'}</Text>
       </View>
     </Pressable>
   );
@@ -73,11 +92,7 @@ export default function UserResults({ route, navigation }) {
   return (
     <View style={styles.container}>
       {loading ? (
-        <>
-          {renderSkeleton()}
-          {renderSkeleton()}
-          {renderSkeleton()}
-        </>
+        Array.from({ length: 5 }).map((_, index) => <React.Fragment key={index}>{renderSkeleton()}</React.Fragment>)
       ) : users.length > 0 ? (
         <FlatList
           data={users}
@@ -87,8 +102,8 @@ export default function UserResults({ route, navigation }) {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#ffffff" // Spinner color on iOS
-              colors={['#ffffff']} // Spinner color on Android
+              tintColor="#ffffff"
+              colors={['#ffffff']}
             />
           }
         />
@@ -137,7 +152,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: 'white'
+    color: 'white',
   },
   userEmail: {
     fontSize: 14,
@@ -156,3 +171,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2c2c2c',
   },
 });
+
+
+
+

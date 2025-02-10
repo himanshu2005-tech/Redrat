@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   View,
-  Switch,
   Modal,
   Pressable,
   Alert,
@@ -12,7 +11,9 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
-  TouchableOpacity
+  TouchableOpacity,
+  Button,
+  PermissionsAndroid
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import firestore from '@react-native-firebase/firestore';
@@ -22,13 +23,19 @@ import {Picker} from '@react-native-picker/picker';
 import storage from '@react-native-firebase/storage';
 import LottieView from 'lottie-react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
+import {openSettings} from 'react-native-permissions';
+import updateTribet from './updateTribet';
+import color from './color';
+import { Switch } from './Switch';
+import {SharedElement} from 'react-navigation-shared-element';
+
 
 export default function CreateNetwork({navigation}) {
   const [networkname, setnetworkname] = useState('');
   const [isprivate, setisprivate] = useState(false);
+  const [panelName, setPanelName] = useState();
   const [modalvisible, setmodalvisible] = useState(false);
   const [code, setcode] = useState('');
-  const [rules, setRules] = useState('');
   const [subTopics, setSubTopics] = useState([]);
   const [newSubTopic, setNewSubTopic] = useState('');
   const [bio, setBio] = useState('');
@@ -37,9 +44,58 @@ export default function CreateNetwork({navigation}) {
   const [profilePic, setProfilePic] = useState(null);
   const [profilePicUri, setProfilePicUri] = useState(null);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [banner, setBanner] = useState();
+  const [bannerUri, setBannerUri] = useState();
+  const [rules, setRules] = useState([]);
+  const [rule, setRule] = useState('');
+  const [description, setDescription] = useState('');
+  const [conditionsChecked, setConditionsChecked] = useState(false);
+  const [askPermission, setAskPermission] = useState(false);
+  const [permissionStatement, setPermissionStatement] = useState('');
+
+  const checkPermission = async permission => {
+    try {
+      const result = await PermissionsAndroid.check(permission);
+
+      let permissionName;
+      if (permission === PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES) {
+        permissionName = 'Photo Access';
+      } else if (
+        permission === PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO
+      ) {
+        permissionName = 'Video Access';
+      } else {
+        permissionName = 'Unknown Permission';
+      }
+
+      if (result) {
+        console.log(`${permissionName} is granted.`);
+        return true;
+      } else {
+        console.log(`${permissionName} is not granted.`);
+
+        if (Platform.OS === 'android') {
+          setPermissionStatement(permissionName);
+          setAskPermission(true);
+        }
+        return false;
+      }
+    } catch (error) {
+      console.warn('Permission check error:', error);
+      return false;
+    }
+  };
 
   const handleSubTopicChange = text => {
     setNewSubTopic(text);
+  };
+
+  const addRule = () => {
+    if (rule.trim() && description.trim()) {
+      setRules([...rules, {rule, description}]);
+      setRule('');
+      setDescription('');
+    }
   };
 
   const addSubTopic = () => {
@@ -67,17 +123,15 @@ export default function CreateNetwork({navigation}) {
     setnetworkname(processedText);
   };
 
-  const handleRulesChange = text => {
-    setRules(text);
-  };
-
   const handleBioChange = text => {
     setBio(text);
   };
 
   const uploadProfilePic = async () => {
     if (profilePicUri) {
-      const filename = profilePicUri.substring(profilePicUri.lastIndexOf('/') + 1);
+      const filename = profilePicUri.substring(
+        profilePicUri.lastIndexOf('/') + 1,
+      );
       const uploadUri = profilePicUri;
       const storageRef = storage().ref(`profile_pics/${filename}`);
       await storageRef.putFile(uploadUri);
@@ -86,7 +140,24 @@ export default function CreateNetwork({navigation}) {
     return null;
   };
 
-  const selectProfilePic = () => {
+  const uploadBannerPic = async () => {
+    if (bannerUri) {
+      const filename = bannerUri.substring(bannerUri.lastIndexOf('/') + 1);
+      const uploadUri = bannerUri;
+      const storageRef = storage().ref(`banner_pics/${filename}`);
+      await storageRef.putFile(uploadUri);
+      return await storageRef.getDownloadURL();
+    }
+    return null;
+  };
+
+  const selectProfilePic = async() => {
+    const granted = await checkPermission(
+      PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+    );
+    if (!granted) {
+      return;
+    }
     launchImageLibrary({mediaType: 'photo'}, response => {
       if (response.didCancel) {
         console.log('User cancelled image picker');
@@ -100,6 +171,60 @@ export default function CreateNetwork({navigation}) {
     });
   };
 
+  const splitTopics = [
+    topics.slice(0, Math.ceil(topics.length / 4)),
+    topics.slice(Math.ceil(topics.length / 4), Math.ceil(topics.length / 2)),
+    topics.slice(
+      Math.ceil(topics.length / 2),
+      Math.ceil((topics.length * 3) / 4),
+    ),
+    topics.slice(Math.ceil((topics.length * 3) / 4)),
+  ];
+
+  const renderTopic = item => (
+    <View style={styles.topicRow}>
+      <Pressable
+        key={item}
+        style={[
+          styles.topicItem,
+          selectedTopic?.includes(item) && styles.selectedTopicItem,
+        ]}
+        onPress={() => handleTopicSelect(item)}>
+        <Text style={styles.topicText}>{item}</Text>
+      </Pressable>
+    </View>
+  );
+
+  const removeRule = index => {
+    const updatedRules = [...rules];
+    updatedRules.splice(index, 1);
+    setRules(updatedRules);
+  };
+
+  const selectBanner = async() => {
+    const granted = await checkPermission(
+      PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+    );
+    if (!granted) {
+      return;
+    }
+    launchImageLibrary({mediaType: 'photo'}, response => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.error) {
+        console.log('ImagePicker Error: ', response.error);
+      } else {
+        const {width, height, uri} = response.assets[0];
+        if (width > height) {
+          const source = {uri};
+          setBanner(source);
+          setBannerUri(uri);
+        } else {
+          console.log('Please select a horizontal (landscape) image.');
+        }
+      }
+    });
+  };
 
   const onsubmit = async () => {
     try {
@@ -120,7 +245,7 @@ export default function CreateNetwork({navigation}) {
 
       setSubmitLoading(true);
       const profilePicUrl = await uploadProfilePic();
-      // Create the new network and get its ID
+      const bannerUrl = await uploadBannerPic();
       const newNetworkRef = await firestore()
         .collection('Network')
         .add({
@@ -135,35 +260,57 @@ export default function CreateNetwork({navigation}) {
           joined: 0,
           isAdminOnly: isAdmin,
           profile_pic: profilePicUrl,
+          networkBackground: bannerUrl,
+          panelName: panelName,
+          createdBy: auth().currentUser.uid,
+          createdEmail: auth().currentUser.email,
+          isSetForAquisition: false
         });
 
       const newNetworkId = newNetworkRef.id;
 
+      const rulesRef = newNetworkRef.collection('rules');
+
+      for (let index = 0; index < rules.length; index++) {
+        const rule = rules[index];
+
+        await rulesRef.add({
+          rule: rule.rule,
+          description: rule.description,
+          index: index + 1,
+        });
+      }
       await firestore()
         .collection('Users')
         .doc(userid)
         .update({
           createdNetworks: firestore.FieldValue.arrayUnion(newNetworkId),
         });
-
-      Alert.alert('Success', 'Network created successfully!');
+      await updateTribet(
+        auth().currentUser.uid,
+        -500,
+        `Creation of ${networkname} network`,
+      );
       setnetworkname('');
       setcode('');
       setRules('');
       setBio('');
       navigation.goBack();
+      navigation.navigate('Network', {
+        networkId: newNetworkId,
+      });
     } catch (error) {
       console.error('Error creating network: ', error);
       Alert.alert('Error', 'Failed to create network. Please try again.');
-    } finally{
-      setSubmitLoading(false)
+    } finally {
+      console.log('adding tribet');
+      setSubmitLoading(false);
     }
   };
 
   const handleTopicSelect = topic => {
     setSelectedTopic(topic);
   };
-
   return (
     <ScrollView
       style={{backgroundColor: 'black', height: '100%'}}
@@ -173,7 +320,7 @@ export default function CreateNetwork({navigation}) {
           <Icon
             name="chevron-back"
             size={28}
-            color="#FF3131"
+            color={color}
             onPress={() => navigation.goBack()}
           />
           <Text style={styles.title}>Create Your Network</Text>
@@ -188,27 +335,34 @@ export default function CreateNetwork({navigation}) {
           value={networkname}
           onChangeText={handleNetworkNameChange}
         />
+        <Text style={styles.name_title}>Name your Panel:</Text>
+        <TextInput
+          style={styles.name_input}
+          placeholder="Enter your Panel Name"
+          placeholderTextColor="grey"
+          value={panelName}
+          onChangeText={text => setPanelName(text)}
+        />
+        <View style={{backgroundColor: "#1a1a1a", padding: 15, borderRadius: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+          <Text style={{color: 'white',fontSize: 17}}>{isprivate ? "Private" : "Public" } Network</Text>
+          <Switch value={isprivate} onPress={() => setisprivate(!isprivate)} />
+        </View>
         <Pressable onPress={selectProfilePic} style={styles.select_pic_button}>
           <Icon name="camera" size={28} color="white" />
-          </Pressable>
-          {profilePic && (
-            <Image source={profilePic} style={styles.profile_pic_preview} />
-          )}
-        <View style={styles.privatechannelcontainer}>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <Text style={styles.privatechanneltext}>Private Channel:</Text>
-            <Switch
-              trackColor={{false: '#767577', true: '#FF3131'}}
-              thumbColor={isprivate ? '#DC143C' : '#f4f3f4'}
-              ios_backgroundColor="#3e3e3e"
-              onValueChange={toggleswitch}
-              value={isprivate}
-            />
-          </View>
-          <Pressable onPress={showmodal}>
-            <Icon name="information-circle-sharp" size={28} color="#FF3131" />
-          </Pressable>
-        </View>
+        </Pressable>
+        {profilePic && (
+          <Image source={profilePic} style={styles.profile_pic_preview} />
+        )}
+        <Pressable onPress={selectBanner} style={styles.select_pic_button}>
+          <Icon name="easel" size={28} color="white" />
+        </Pressable>
+        {banner && (
+          <Image
+            source={banner}
+            style={styles.banner_preview}
+            resizeMode="cover"
+          />
+        )}
 
         {isprivate && (
           <View style={styles.privatecodecontainer}>
@@ -225,39 +379,28 @@ export default function CreateNetwork({navigation}) {
           </View>
         )}
         <View style={styles.privatechannelcontainer}>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent:'space-between', width:"100%"}}>
             <Text style={styles.privatechanneltext}>
               Admin-only post policy
             </Text>
-            <Switch
-              trackColor={{false: '#767577', true: '#FF3131'}}
-              thumbColor={isAdmin ? '#DC143C' : '#f4f3f4'}
-              ios_backgroundColor="#3e3e3e"
-              onValueChange={toggleswitchAdmin}
-              value={isAdmin}
-            />
+            <Switch value={isAdmin} onPress={toggleswitchAdmin} />
           </View>
         </View>
 
         {!isprivate ? (
           <>
-          <Text style={{color: 'white', fontSize: 18, marginTop: 10}}>Select the topic of your network</Text>
-          {topics.map((topic) => (
-            <TouchableOpacity
-              key={topic}
-              onPress={() => setSelectedTopic(topic)}
-              style={{
-                padding: 10,
-                backgroundColor: selectedTopic === topic ? '#FF3131' : '#1a1a1a',
-                borderRadius: 5,
-                marginVertical: 5,
-              }}
-            >
-              <Text style={{ color: selectedTopic === topic ? '#fff' : '#FF3131' }}>
-                {topic}
-              </Text>
-            </TouchableOpacity>
-          ))}
+            <Text style={{color: 'grey', margin: 10}}>
+            Could you please clarify the underlying network or framework upon which this system is based?
+            </Text>
+            {splitTopics.map((topicArray, index) => (
+              <ScrollView
+                key={index}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.scrollViewContent}>
+                {topicArray.map(item => renderTopic(item))}
+              </ScrollView>
+            ))}
           </>
         ) : (
           <View />
@@ -268,9 +411,9 @@ export default function CreateNetwork({navigation}) {
           <View style={styles.subtopics_list}>
             {subTopics.map((topic, index) => (
               <View key={index} style={styles.subtopic_item}>
-                <Text style={{color: '#FF3131', marginRight: 3}}>{topic}</Text>
+                <Text style={{color: color, marginRight: 3}}>{topic}</Text>
                 <Pressable onPress={() => removeSubTopic(index)}>
-                  <Icon name="close-circle" size={20} color="#FF3131" />
+                  <Icon name="close-circle" size={20} color={color} />
                 </Pressable>
               </View>
             ))}
@@ -282,7 +425,7 @@ export default function CreateNetwork({navigation}) {
               placeholderTextColor="grey"
               value={newSubTopic}
               onChangeText={handleSubTopicChange}
-              maxLength={10}
+              maxLength={20}
             />
             <Pressable onPress={addSubTopic}>
               <Text style={styles.add_subtopic_btn}>Add</Text>
@@ -302,25 +445,104 @@ export default function CreateNetwork({navigation}) {
         />
 
         <Text style={styles.rules_title}>Network Rules:</Text>
+        {Array.isArray(rules) &&
+          rules.map((item, index) => (
+            <TouchableOpacity
+              style={{backgroundColor: '#1a1a1a', borderRadius: 5, padding: 8}}
+              key={index}
+              onPress={() => removeRule(index)}>
+              <View
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  padding: 5,
+                  borderRadius: 5,
+                  alignItems: 'center',
+                }}>
+                <Text style={{fontWeight: 'bold', color: 'white'}}>
+                  {item.rule}
+                </Text>
+              </View>
+              <View>
+                <Text style={{color: 'white', padding: 10}}>{item.description}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+
         <TextInput
-          style={styles.rules_input}
-          placeholder="Enter network rules here..."
+          placeholder="Rule"
+          value={rule}
+          style={styles.name_input}
           placeholderTextColor="grey"
-          value={rules}
-          onChangeText={handleRulesChange}
-          multiline={true}
+          onChangeText={setRule}
+        />
+        <TextInput
+          placeholder="Description"
+          value={description}
+          style={styles.rules_input}
+          placeholderTextColor="grey"
+          onChangeText={setDescription}
+          multiline
           numberOfLines={4}
         />
+        <Pressable
+          style={{
+            backgroundColor: rule && description ? color : '#1a1a1a',
+            alignItems: 'center',
+            padding: 10,
+            borderRadius: 10,
+          }}
+          onPress={addRule}
+          disabled={!rule || !description}>
+          <Icon name="add" size={20} color="white" />
+        </Pressable>
       </View>
-      <Pressable style={styles.submit_btn} onPress={onsubmit}>
-      {submitLoading ? (
-            <ActivityIndicator size="small" color="white" />      
-      ) : (
-       <>
-          <Text style={styles.submit_btn_text}>Create Network</Text>
-        <Icon name="radio" size={28} color="white" />
-        </>
-      )}
+      <Pressable
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-around',
+          alignItems: 'center',
+          gap: 15,
+          margin: 10,
+        }}
+        onPress={() => setConditionsChecked(!conditionsChecked)}>
+        <Icon
+          name={conditionsChecked ? 'checkbox' : 'square-outline'}
+          size={24}
+          color={color}
+        />
+        <Text style={{color: conditionsChecked ? 'white' : 'grey', flex: 1}}>
+          I agree to keep the network safe and friendly by promptly reviewing
+          reports and taking action, including removing posts or banning users
+          who violate the rules.
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={{
+          width: '90%',
+          alignSelf: 'center',
+          backgroundColor: color,
+          padding: 10,
+          borderRadius: 4,
+          flexDirection: 'row',
+          gap: 20,
+          justifyContent: 'center',
+          marginTop: 20,
+          marginBottom: 50,
+          opacity: conditionsChecked ? 1 : 0.5,
+        }}
+        onPress={onsubmit}
+        disabled={!conditionsChecked}>
+        {submitLoading ? (
+          <ActivityIndicator size="small" color="white" />
+        ) : (
+          <>
+            <Text style={styles.submit_btn_text}>
+              {conditionsChecked ? 'Create Network' : 'Accept above Conditions'}
+            </Text>
+            <Icon name="radio" size={28} color="white" />
+          </>
+        )}
       </Pressable>
 
       <Modal
@@ -350,11 +572,77 @@ export default function CreateNetwork({navigation}) {
                 padding: 10,
               }}>
               <Pressable
-                style={[styles.modalbutton, {backgroundColor: '#FF3131'}]}
+                style={[styles.modalbutton, {backgroundColor: color}]}
                 onPress={closemodal}>
                 <Text style={styles.modalbuttontext}>Close</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        transparent={true}
+        visible={askPermission}
+        animationType="slide"
+        onRequestClose={() => setAskPermission(false)}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}>
+          <View
+            style={{
+              backgroundColor: 'black',
+              padding: 20,
+              borderRadius: 10,
+              width: '90%',
+              alignItems: 'center',
+            }}>
+            <Text
+              style={{
+                color: 'white',
+                fontSize: 16,
+                textAlign: 'center',
+                marginTop: 10,
+              }}>
+              {permissionStatement} Permission
+            </Text>
+            <Text
+              style={{
+                color: 'white',
+                fontSize: 16,
+                textAlign: 'center',
+                marginTop: 10,
+              }}>
+              The {permissionStatement} permission is required to access media
+              files. Please enable it in the settings.
+            </Text>
+            <Pressable
+              style={{
+                backgroundColor: color,
+                width: '90%',
+                padding: 15,
+                borderRadius: 5,
+                alignItems: 'center',
+                marginTop: 10,
+              }}
+              onPress={openSettings}>
+              <Text style={{color: 'white'}}>Open Settings</Text>
+            </Pressable>
+            <Pressable
+              style={{
+                backgroundColor: '#1a1a1a',
+                width: '90%',
+                padding: 15,
+                borderRadius: 5,
+                alignItems: 'center',
+                marginTop: 10,
+              }}
+              onPress={() => setAskPermission(false)}>
+              <Text style={{color: 'white'}}>Cancel</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -368,9 +656,7 @@ const styles = StyleSheet.create({
     top: 0,
     zIndex: 100,
     backgroundColor: 'black',
-    padding: 10,
-    borderBottomWidth: 0.2,
-    borderColor: 'grey',
+    padding: 5,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -380,12 +666,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   picker: {
-    borderColor: '#FF3131',
+    borderColor: color,
     borderWidth: 0.4,
   },
   title: {
     fontSize: 24,
-    color: '#FF3131',
+    color: 'white',
     marginLeft: 10,
   },
   content: {
@@ -403,8 +689,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderRadius: 2,
     fontSize: 17,
-    color: '#FF3131',
-    borderRadius: 5
+    color: color,
+    borderRadius: 5,
   },
   privatechannelcontainer: {
     flexDirection: 'row',
@@ -415,7 +701,7 @@ const styles = StyleSheet.create({
     padding: 15,
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 5
+    borderRadius: 5,
   },
   privatechanneltext: {
     fontSize: 18,
@@ -437,7 +723,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderRadius: 5,
     fontSize: 17,
-    color: '#FF3131',
+    color: color,
   },
   rules_title: {
     fontSize: 18,
@@ -451,7 +737,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderRadius: 5,
     fontSize: 17,
-    color: '#FF3131',
+    color: color,
     textAlignVertical: 'top',
     minHeight: 100,
   },
@@ -472,7 +758,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 10,
-    color: '#FF3131',
+    color: color,
   },
   modaltext: {
     fontSize: 16,
@@ -496,18 +782,6 @@ const styles = StyleSheet.create({
   modalbuttontext: {
     fontSize: 16,
     color: 'white',
-  },
-  submit_btn: {
-    width: '90%',
-    alignSelf: 'center',
-    backgroundColor: '#FF3131',
-    padding: 20,
-    borderRadius: 4,
-    flexDirection: 'row',
-    gap: 20,
-    justifyContent: 'center',
-    marginTop: 20,
-    marginBottom: 50,
   },
   submit_btn_text: {
     color: 'white',
@@ -548,12 +822,12 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     fontSize: 17,
     borderWidth: 0.7,
-    color: '#FF3131',
+    color: color,
     marginRight: 10,
   },
   add_subtopic_btn: {
     padding: 10,
-    backgroundColor: '#FF3131',
+    backgroundColor: color,
     borderRadius: 4,
     color: 'white',
   },
@@ -569,7 +843,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderRadius: 5,
     fontSize: 17,
-    color: '#FF3131',
+    color: color,
     textAlignVertical: 'top',
     minHeight: 100,
   },
@@ -587,12 +861,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   select_pic_button: {
-    backgroundColor: '#FF3131',
+    backgroundColor: color,
     borderRadius: 5,
     padding: 10,
     marginBottom: 10,
     alignItems: 'center',
-    
   },
   select_pic_text: {
     color: 'white',
@@ -602,6 +875,30 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    alignSelf: 'center'
+    alignSelf: 'center',
+  },
+  banner_preview: {
+    width: '100%',
+    height: 50,
+  },
+  scrollViewContent: {
+    flexDirection: 'row',
+  },
+  topicRow: {
+    marginRight: 10,
+  },
+  topicItem: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 5,
+    alignItems: 'center',
+    paddingHorizontal: 15
+  },
+  selectedTopicItem: {
+    backgroundColor: color,
+  },
+  topicText: {
+    color: 'white',
+    fontSize: 14,
+    padding: 15,
   },
 });

@@ -5,6 +5,8 @@ import ImageViewer from 'react-native-image-zoom-viewer';
 import Icon from 'react-native-vector-icons/Ionicons';
 import RNFetchBlob from 'rn-fetch-blob';
 import { PermissionsAndroid } from 'react-native';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 const ImageExpand = ({ route, navigation }) => {
   const { images } = route.params;
@@ -66,15 +68,8 @@ const ImageExpand = ({ route, navigation }) => {
       <Icon
         name="chevron-down-outline"
         size={28}
-        color="#FF3131"
+        color={color}
         onPress={() => navigation.goBack()}
-      />
-      <Icon
-        name="download-outline"
-        size={28}
-        color="#FF3131"
-        style={{ marginLeft: 20 }}
-        onPress={() => downloadImage(imagesData[currentImageIndex].url)}
       />
     </View>
   );

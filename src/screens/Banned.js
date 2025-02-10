@@ -3,6 +3,8 @@ import { Pressable, Text, View, Image, Alert, TextInput, RefreshControl } from '
 import firestore from '@react-native-firebase/firestore';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { FlashList } from '@shopify/flash-list';
+import color from './color';
+import {SharedElement} from 'react-navigation-shared-element';
 
 const DisplayUser = ({ userId, network_id, onUnban }) => {
   const [userDetails, setUserDetails] = useState({});
@@ -46,7 +48,7 @@ const DisplayUser = ({ userId, network_id, onUnban }) => {
         </Text>
       </View>
       <View style={{ alignItems: 'center' }}>
-        <Pressable style={{ backgroundColor: '#FF3131', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 3 }} onPress={unBan}>
+        <Pressable style={{ backgroundColor: color, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 3 }} onPress={unBan}>
           <Text style={{ color: 'white', fontWeight: 'bold' }}>Unban User</Text>
         </Pressable>
       </View>
@@ -110,15 +112,13 @@ export default function Banned({ route, navigation }) {
         padding: 15,
         flexDirection: 'row',
         alignItems: 'center',
-        borderBottomWidth: 0.7,
-        borderColor: 'grey',
         justifyContent: 'space-between',
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Icon
             name="chevron-down-outline"
             size={25}
-            color="#FF3131"
+            color={color}
             onPress={() => navigation.goBack()}
           />
           <Text style={{

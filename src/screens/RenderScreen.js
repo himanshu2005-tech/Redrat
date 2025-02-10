@@ -1,89 +1,175 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, Suspense} from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  FlatList,
   ActivityIndicator,
+  FlatList,
+  Dimensions,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
-import Post from './Post';
-import Animated from 'react-native-reanimated';
-import {SharedElement} from 'react-navigation-shared-element';
+import {debounce} from 'lodash';
+import {AdView} from '../ads/AdView';
+import uuid from 'react-native-uuid';
+import {splitString} from '../texting/textSplit';
+import { SharedElement } from 'react-navigation-shared-element';
 
-export default function RenderScreen({network_id, topic, filter}) {
+const Post = React.lazy(() => import('./Post'));
+
+const injectAdsIntoPosts = (posts, adFrequency = 10) => {
+  const updatedPosts = [];
+  posts.forEach((post, index) => {
+    updatedPosts.push(post);
+    if ((index + 1) % adFrequency === 0) {
+      updatedPosts.push({
+        type: 'ad',
+        id: `ad-${uuid.v1()}`,
+        adType: 'image',
+      });
+    }
+  });
+  return updatedPosts.filter(
+    (item, index, array) =>
+      item.type !== 'ad' || array[index - 1]?.type !== 'ad',
+  );
+};
+
+export default function RenderScreen({
+  network_id,
+  topic,
+  filter,
+  searchInput,
+  isSearchInput,
+}) {
   const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [lastVisible, setLastVisible] = useState(null);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+
+  const debouncedFetch = debounce(() => fetchPosts(true), 500);
 
   useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        let postsRef = firestore()
-          .collection('Network')
-          .doc(network_id)
-          .collection('Posts');
-  
-        if (topic !== 'All') {
-          postsRef = postsRef.where('selectedSubtopics', 'array-contains', topic);
-        }
-  
-        if (filter === "New") {
-          postsRef = postsRef.orderBy('createdAt', 'desc');
-        } else if (filter === "Popular") {
-          postsRef = postsRef.orderBy('likeCount', 'desc');
-        }
-  
-        const snapshot = await postsRef.get();
-  
-        if (!snapshot.empty) {
-          let fetchedPosts = [];
-          snapshot.forEach(doc => {
-            fetchedPosts.push({ id: doc.id, ...doc.data() });
-          });
-          setPosts(fetchedPosts);
-        } else {
-          console.log('No posts found for topic:', topic);
-        }
-      } catch (error) {
-        console.error('Error fetching posts:', error);
-      } finally {
-        setLoading(false);
-        console.log("topic", topic);
-        console.log("filter", filter);
+    debouncedFetch();
+    return () => debouncedFetch.cancel();
+  }, [searchInput, network_id, topic, filter, isSearchInput]);
+
+  const fetchPosts = async (isInitialLoad = false) => {
+    if (loading || isFetchingMore) return;
+    if (isInitialLoad) setLoading(true);
+    else setIsFetchingMore(true);
+
+    try {
+      let postsRef = firestore()
+        .collection('Posts')
+        .where('network_id', '==', network_id);
+
+      if (topic !== 'All' && topic) {
+        postsRef = postsRef.where('selectedSubtopics', 'array-contains', topic);
       }
-    };
-  
-    fetchPosts();
-  }, [network_id, topic, filter]);
-  
 
-  const renderEmptyComponent = () => (
-    <Text style={styles.emptyText}>
-      {topic === 'All' ? 'No posts' : `No networks posts on ${topic}`}
-    </Text>
+      switch (filter) {
+        case 'Featured':
+          postsRef = postsRef
+            .orderBy('likeCount', 'desc')
+            .orderBy('createdAt', 'desc');
+          break;
+        case 'Just In':
+          postsRef = postsRef.orderBy('createdAt', 'desc');
+          break;
+        case 'Crowd Favorites':
+          postsRef = postsRef.orderBy('likeCount', 'desc');
+          break;
+        case 'Snapshots':
+          postsRef = postsRef.where('hasImages', '==', true);
+          break;
+        case 'Motion Media':
+          postsRef = postsRef.where('hasVideo', '==', true);
+          break;
+        default:
+          break;
+      }
+
+      if (searchInput.trim()) {
+        const keywords = splitString(searchInput).filter(word => word.trim());
+        if (keywords.length) {
+          postsRef = postsRef.where('title', 'array-contains-any', keywords);
+        }
+      }
+
+      if (lastVisible) {
+        postsRef = postsRef.startAfter(lastVisible);
+      }
+
+      const snapshot = await postsRef.limit(2).get();
+      console.log('Fetching.//');
+      const fetchedPosts = snapshot.empty
+        ? []
+        : snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+
+      const uniquePosts = [
+        ...new Map(
+          [...(isInitialLoad ? [] : posts), ...fetchedPosts].map(item => [
+            item.id,
+            item,
+          ]),
+        ).values(),
+      ];
+
+      setPosts(injectAdsIntoPosts(uniquePosts));
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+    } finally {
+      if (isInitialLoad) setLoading(false);
+      else setIsFetchingMore(false);
+    }
+  };
+
+  const renderNoPosts = () => (
+    <View style={styles.noPostsContainer}>
+      <Text style={styles.noPostsText}>
+        {searchInput.trim()
+          ? 'No posts found'
+          : 'A blank canvas... what will your first post be?'}
+      </Text>
+    </View>
   );
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF3131" />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={posts}
-        keyExtractor={item => item.id}
-        renderItem={({item}) => (
-          <SharedElement id={`post.${item.id}`}>
-            <Post post_id={item.id} network_id={network_id} />
-          </SharedElement>
-        )}
-        contentContainerStyle={styles.flatListContent}
-        ListEmptyComponent={renderEmptyComponent()}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#FF3131" />
+        </View>
+      ) : posts.length > 0 ? (
+        <FlatList
+          data={posts}
+          keyExtractor={item => item.id}
+          renderItem={({item}) =>
+            item.type === 'ad' ? (
+              <Suspense
+                fallback={<ActivityIndicator size="small" color="#FF3131" />}>
+                <AdView
+                  loadOnMount={true}
+                  index={item.id}
+                  type={item.adType}
+                  media={false}
+                />
+              </Suspense>
+            ) : (
+              <SharedElement id={`item.${item.id}.post`}>
+                <Suspense fallback={null}>
+                  <Post post_id={item.id} />
+                </Suspense>
+              </SharedElement>
+            )
+          }
+          onEndReached={() => fetchPosts(false)}
+          onEndReachedThreshold={1}
+        />
+      ) : (
+        renderNoPosts()
+      )}
     </View>
   );
 }
@@ -98,13 +184,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'black',
   },
-  flatListContent: {
-    flexGrow: 1,
+  noPostsContainer: {
+    height: Dimensions.get('screen').height / 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  emptyText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 20,
-    color: 'black',
+  noPostsText: {
+    color: 'grey',
+    fontSize: 15,
   },
 });
