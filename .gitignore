@@ -78,4 +78,7 @@ server.js
 sendNotification.js
 sendNotificationViaId.js
 
-*.json
+src/backend/*.json
+
+android/*.json
+src/backend/*.json
