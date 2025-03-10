@@ -65,6 +65,7 @@ npm start  # or yarn start
 ## 🛠 **Contributing**
 We welcome contributions! Feel free to submit a pull request or report issues.
 
+📸 Screenshots
 <p align="center">
   <img src="https://raw.githubusercontent.com/himanshu2005-tech/Redrat/refs/heads/main/Screenshot_20250310_093202.jpg" alt="Image 1" width="400"/>
   <img src="https://raw.githubusercontent.com/himanshu2005-tech/Redrat/refs/heads/main/Screenshot_20250310_093219.jpg" alt="Image 2" width="400"/>
