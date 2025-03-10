@@ -1,7 +1,7 @@
-# RedRat - The Next-Gen Social Network
+# RedRat - Social Network
 
 ## Overview
-RedRat is a cutting-edge social networking platform where users can build and expand their networks using **Tribet Coins**. Users earn coins through interactions such as reporting significant posts, liking content, and joining networks. The platform supports different post types, analytics for admins, bot moderation, and network trading.
+RedRat is a social networking platform where users can build and expand their networks using **Tribet Coins**. Users earn coins through interactions such as reporting significant posts, liking content, and joining networks. The platform supports different post types, analytics for admins, bot moderation, and network trading.
 
 ## Features
 
