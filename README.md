@@ -11,6 +11,7 @@ RedRat is a cutting-edge social networking platform where users can build and ex
   - **Title & Information**
   - **Subtopics**
   - **Polls or Standard Posts** (with images/videos)
+- **Post Filtering** – Users can filter posts based on their **network, subtopics, or post type**.
 - **Post Interactions** – Users can **like, save, report**, and engage with content.
 - **Followers & Following** – Users can connect with others to expand their reach.
 
@@ -34,7 +35,7 @@ RedRat is a cutting-edge social networking platform where users can build and ex
 
 ## 🔧 **Technology Stack**
 - **Frontend:** React Native
-- **Backend:** Firebase, Firestore
+- **Backend:** Firebase, Firestore, Railway API (for sending messages)
 - **Authentication:** Firebase Auth
 - **Storage:** Firebase Storage (for images/videos)
 - **Notifications:** Firebase Cloud Messaging (FCM)
